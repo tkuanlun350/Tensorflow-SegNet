@@ -3,12 +3,8 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import dtypes
 
 import os, sys
-import lmdb
 import numpy as np
 import math
-caffe_root = '/tmp3/first350/caffe-segnet/'
-sys.path.insert(0, caffe_root + 'python')
-import caffe
 from datetime import datetime
 import time
 import Image
@@ -146,119 +142,6 @@ def CamVidInputs(image_filenames, label_filenames):
                                          min_queue_examples, BATCH_SIZE,
                                          shuffle=True)
 
-
-def get_labels_sequence(path, num_samples):
-  lmdb_env = lmdb.open(path, readonly=True)
-  lmdb_txn = lmdb_env.begin()
-  lmdb_cursor = lmdb_txn.cursor()
-  datum = caffe.proto.caffe_pb2.Datum()
-  sequence = []
-  labels = []
-  index = 0
-  for key, value in lmdb_cursor:
-    if (index != 0 and index % 155 == 0):
-      sequence.append(np.asarray(images))
-      labels = []
-    datum.ParseFromString(value)
-    flat_x = caffe.io.datum_to_array(datum)
-    label = flat_x.reshape(datum.channels, datum.height, datum.width)
-    labels.append(label)
-    index += 1
-  return sequence
-
-def get_images_sequence(path, num_samples):
-  lmdb_env = lmdb.open(path, readonly=True)
-  lmdb_txn = lmdb_env.begin()
-  lmdb_cursor = lmdb_txn.cursor()
-  datum = caffe.proto.caffe_pb2.Datum()
-  sequence = []
-  images = []
-  index = 0
-  for key, value in lmdb_cursor:
-    if (index != 0 and index % 155 == 0):
-        sequence.append(np.asarray(images))
-        images = []
-    datum.ParseFromString(value)
-    image = np.array(datum.float_data).astype(float)
-    image = image.reshape(datum.channels, datum.height, datum.width)
-    images.append(image)
-    index += 1
-  return sequence
-
-def get_labels_single(path, num_samples):
-  lmdb_env = lmdb.open(path, readonly=True)
-  lmdb_txn = lmdb_env.begin()
-  lmdb_cursor = lmdb_txn.cursor()
-  datum = caffe.proto.caffe_pb2.Datum()
-  sequence = []
-  labels = []
-  index = 0
-  for key, value in lmdb_cursor:
-    if (index == num_samples):
-        break
-    datum.ParseFromString(value)
-    flat_x = caffe.io.datum_to_array(datum)
-    label = flat_x.reshape(datum.height, datum.width, datum.channels)
-    labels.append(label)
-    index += 1
-  return np.asarray(labels)
-
-def get_images_single(path, num_samples):
-  lmdb_env = lmdb.open(path, readonly=True)
-  lmdb_txn = lmdb_env.begin()
-  lmdb_cursor = lmdb_txn.cursor()
-  datum = caffe.proto.caffe_pb2.Datum()
-  sequence = []
-  images = []
-  index = 0
-  for key, value in lmdb_cursor:
-    if index == num_samples:
-        break
-    datum.ParseFromString(value)
-    image = np.array(datum.float_data).astype(np.float32)
-    image = image.reshape(datum.height, datum.width, datum.channels)
-    images.append(image)
-    index += 1
-  return np.asarray(images)
-
-def get_labels(path):
-  lmdb_env = lmdb.open(path, readonly=True)
-  lmdb_txn = lmdb_env.begin()
-  lmdb_cursor = lmdb_txn.cursor()
-  datum = caffe.proto.caffe_pb2.Datum()
-  sequence = []
-  labels = []
-  index = 0
-  for key, value in lmdb_cursor:
-    datum.ParseFromString(value)
-    flat_x = caffe.io.datum_to_array(datum)
-    label = flat_x.reshape(datum.height, datum.width, datum.channels)
-    labels.append(label)
-  return np.asarray(labels)
-
-def get_images(path):
-  lmdb_env = lmdb.open(path, readonly=True)
-  lmdb_txn = lmdb_env.begin()
-  lmdb_cursor = lmdb_txn.cursor()
-  datum = caffe.proto.caffe_pb2.Datum()
-  sequence = []
-  images = []
-  index = 0
-  for key, value in lmdb_cursor:
-    datum.ParseFromString(value)
-    image = np.array(datum.float_data).astype(np.float32)
-    image = image.reshape(datum.height, datum.width, datum.channels)
-    images.append(image)
-  return np.asarray(images)
-
-def get_small_batch(images, labels, index = 0):
-    max_size = images.shape[0]
-    if index + BATCH_SIZE > max_size :
-        im_temp = np.concatenate((images[index: max_size] , images[0 : index + BATCH_SIZE - max_size]), axis=0)
-        label_temp =  np.concatenate((labels[index: max_size] , labels[0 : index + BATCH_SIZE - max_size]), axis=0)
-        return im_temp, label_temp, index + BATCH_SIZE - max_size
-    return images[index : index+BATCH_SIZE], labels[index : index+BATCH_SIZE], index+BATCH_SIZE
-
 def _activation_summary(x):
   """Helper to create summaries for activations.
 
@@ -349,6 +232,9 @@ def msra_initializer(kl, dl):
     return tf.truncated_normal_initializer(stddev=stddev)
 
 def dump_unravel(indices, shape):
+    """
+    self-implented unravel indice, missing gradients, need fix
+    """
     N = indices.get_shape().as_list()[0]
     tb = tf.constant([shape[0]], shape=[1,N])
     ty = tf.constant([shape[1]], shape=[1,N])
@@ -483,23 +369,26 @@ def conv_layer_with_bn(inputT, shape, train_phase, activation=True, name=None):
     return conv_out
 
 def get_deconv_filter(f_shape):
-        width = f_shape[0]
-        heigh = f_shape[0]
-        f = ceil(width/2.0)
-        c = (2 * f - 1 - f % 2) / (2.0 * f)
-        bilinear = np.zeros([f_shape[0], f_shape[1]])
-        for x in range(width):
-            for y in range(heigh):
-                value = (1 - abs(x / f - c)) * (1 - abs(y / f - c))
-                bilinear[x, y] = value
-        weights = np.zeros(f_shape)
-        for i in range(f_shape[2]):
-            weights[:, :, i, i] = bilinear
+  """
+    reference: https://github.com/MarvinTeichmann/tensorflow-fcn
+  """
+  width = f_shape[0]
+  heigh = f_shape[0]
+  f = ceil(width/2.0)
+  c = (2 * f - 1 - f % 2) / (2.0 * f)
+  bilinear = np.zeros([f_shape[0], f_shape[1]])
+  for x in range(width):
+      for y in range(heigh):
+          value = (1 - abs(x / f - c)) * (1 - abs(y / f - c))
+          bilinear[x, y] = value
+  weights = np.zeros(f_shape)
+  for i in range(f_shape[2]):
+      weights[:, :, i, i] = bilinear
 
-        init = tf.constant_initializer(value=weights,
-                                       dtype=tf.float32)
-        return tf.get_variable(name="up_filter", initializer=init,
-                               shape=weights.shape)
+  init = tf.constant_initializer(value=weights,
+                                 dtype=tf.float32)
+  return tf.get_variable(name="up_filter", initializer=init,
+                         shape=weights.shape)
 
 def deconv_layer(inputT, f_shape, output_shape, stride=2, name=None):
   # output_shape = [b, w, h, c]
@@ -636,9 +525,9 @@ def get_hist(predictions, labels):
 
 def print_hist_summery(hist):
   acc_total = np.diag(hist).sum() / hist.sum()
-  print ('>>>', datetime.now(), 'Iteration', iter, 'accuracy', np.nanmean(acc_total))
+  print ('accuracy = %f'%np.nanmean(acc_total))
   iu = np.diag(hist) / (hist.sum(1) + hist.sum(0) - np.diag(hist))
-  print ('>>>', datetime.now(), 'Iteration', iter, 'mean IU', np.nanmean(iu))
+  print ('mean IU  = %f'%np.nanmean(iu))
   for ii in range(NUM_CLASSES):
       if float(hist.sum(1)[ii]) == 0:
         acc = 0.0
@@ -654,9 +543,9 @@ def per_class_acc(predictions, label_tensor):
     for i in range(size):
       hist += fast_hist(labels[i].flatten(), predictions[i].argmax(2).flatten(), num_class)
     acc_total = np.diag(hist).sum() / hist.sum()
-    print ('>>>', datetime.now(), 'Iteration', iter, 'accuracy', np.nanmean(acc_total))
+    print ('accuracy = %f'%np.nanmean(acc_total))
     iu = np.diag(hist) / (hist.sum(1) + hist.sum(0) - np.diag(hist))
-    print ('>>>', datetime.now(), 'Iteration', iter, 'mean IU', np.nanmean(iu))
+    print ('mean IU  = %f'%np.nanmean(iu))
     for ii in range(num_class):
         if float(hist.sum(1)[ii]) == 0:
           acc = 0.0
@@ -679,7 +568,7 @@ def eval_batches(data, sess, eval_prediction=None):
 
 def test():
   checkpoint_dir = "/tmp4/first350/TensorFlow/Logs"
-
+  # testing should set BATCH_SIZE = 1
   batch_size = 1
 
   image_filenames, label_filenames = get_filename_list("/tmp3/first350/SegNet-Tutorial/CamVid/train.txt")
@@ -695,7 +584,8 @@ def test():
   loss, logits = inference(test_data_node, test_labels_node, phase_train)
 
   pred = tf.argmax(logits, dimension=3)
-  # Get images and labels for CamVid.
+
+  # get moving avg
   variable_averages = tf.train.ExponentialMovingAverage(
                       MOVING_AVERAGE_DECAY)
   variables_to_restore = variable_averages.variables_to_restore()
