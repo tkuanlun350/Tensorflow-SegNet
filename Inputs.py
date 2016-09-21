@@ -55,6 +55,23 @@ def _generate_image_and_label_batch(image, label, min_queue_examples,
 
   return images, label_batch
 
+def CamVid_reader_seq(filename_queue, seq_length):
+  image_seq_filenames = tf.split(0, seq_length, filename_queue[0])
+  label_seq_filenames = tf.split(0, seq_length, filename_queue[1])
+
+  image_seq = []
+  label_seq = []
+  for im ,la in zip(image_seq_filenames, label_seq_filenames):
+    imageValue = tf.read_file(tf.squeeze(im))
+    labelValue = tf.read_file(tf.squeeze(la))
+    image_bytes = tf.image.decode_png(imageValue)
+    label_bytes = tf.image.decode_png(labelValue)
+    image = tf.cast(tf.reshape(image_bytes, (IMAGE_HEIGHT, IMAGE_WIDTH, IMAGE_DEPTH)), tf.float32)
+    label = tf.reshape(label_bytes, (IMAGE_HEIGHT, IMAGE_WIDTH, 1))
+    image_seq.append(image)
+    label_seq.append(label)
+  return image_seq, label_seq
+
 def CamVid_reader(filename_queue):
 
   image_filename = filename_queue[0]
@@ -71,6 +88,30 @@ def CamVid_reader(filename_queue):
 
   return image, label
 
+def get_filename_list_seq(path):
+  fd = open(path)
+  total_train_file = 367
+  seq_length = 5
+  im_seq = []
+  label_seq = []
+  image_filenames = []
+  label_filenames = []
+  filenames = []
+  index = 0
+  for i in fd:
+    if index%seq_length == 0 and index != 0:
+      image_filenames.append(im_seq)
+      label_filenames.append(label_seq)
+      im_seq = []
+      label_seq = []
+
+    i = i.strip().split(" ")
+    im_seq.append(i[0])
+    label_seq.append(i[1])
+    index += 1
+  print("im, label seq: ", len(image_filenames), len(label_filenames))
+  return image_filenames, label_filenames
+
 def get_filename_list(path):
   fd = open(path)
   image_filenames = []
@@ -81,6 +122,23 @@ def get_filename_list(path):
     image_filenames.append(i[0])
     label_filenames.append(i[1])
   return image_filenames, label_filenames
+
+def CamVidInputs_seq(image_filenames, label_filenames, batch_size, seq_length):
+  images = ops.convert_to_tensor(image_filenames, dtype=dtypes.string)
+  labels = ops.convert_to_tensor(label_filenames, dtype=dtypes.string)
+  print("seq im, la filenames", images.get_shape(), labels.get_shape())
+  filename_queue = tf.train.slice_input_producer([images, labels], shuffle=True)
+  image_seq, label_seq = CamVid_reader_seq(filename_queue, seq_length)
+  min_fraction_of_examples_in_queue = 0.4
+  min_queue_examples = int(73 *
+                           min_fraction_of_examples_in_queue)
+  print ('Filling queue with %d CamVid seq_images before starting to train. '
+         'This will take a few minutes.' % min_queue_examples)
+
+  # Generate a batch of images and labels by building up a queue of examples.
+  return _generate_image_and_label_batch(image_seq, label_seq,
+                                         min_queue_examples, batch_size,
+                                         shuffle=True)
 
 def CamVidInputs(image_filenames, label_filenames, batch_size):
 
