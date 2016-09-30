@@ -528,116 +528,116 @@ def test():
 if __name__ == "__main__":
   max_steps = 20000
   batch_size = BATCH_SIZE
-  train_dir = "/tmp4/first350/TensorFlow/Logs"
+  train_dir = "/tmp3/first350/TensorFlow/Logs"
   image_filenames, label_filenames = get_filename_list("/tmp3/first350/SegNet-Tutorial/CamVid/train.txt")
   val_image_filenames, val_label_filenames = get_filename_list("/tmp3/first350/SegNet-Tutorial/CamVid/val.txt")
+  with tf.device('/gpu:3'):
+      with tf.Graph().as_default():
 
-  with tf.Graph().as_default():
+        train_data_node = tf.placeholder(
+              tf.float32,
+              shape=[batch_size, 360, 480, 3])
 
-    train_data_node = tf.placeholder(
-          tf.float32,
-          shape=[batch_size, 360, 480, 3])
+        train_labels_node = tf.placeholder(tf.int64, shape=[batch_size, 360, 480, 1])
 
-    train_labels_node = tf.placeholder(tf.int64, shape=[batch_size, 360, 480, 1])
+        phase_train = tf.placeholder(tf.bool, name='phase_train')
 
-    phase_train = tf.placeholder(tf.bool, name='phase_train')
+        global_step = tf.Variable(0, trainable=False)
 
-    global_step = tf.Variable(0, trainable=False)
+        # For CamVid
+        images, labels = CamVidInputs(image_filenames, label_filenames, BATCH_SIZE)
 
-    # For CamVid
-    images, labels = CamVidInputs(image_filenames, label_filenames, BATCH_SIZE)
+        val_images, val_labels = CamVidInputs(val_image_filenames, val_label_filenames, BATCH_SIZE)
+        # Build a Graph that computes the logits predictions from the
+        # inference model.
 
-    val_images, val_labels = CamVidInputs(val_image_filenames, val_label_filenames, BATCH_SIZE)
-    # Build a Graph that computes the logits predictions from the
-    # inference model.
+        loss, eval_prediction = inference(train_data_node, train_labels_node, phase_train)
 
-    loss, eval_prediction = inference(train_data_node, train_labels_node, phase_train)
+        # Build a Graph that trains the model with one batch of examples and
+        # updates the model parameters.
+        train_op = train(loss, global_step)
 
-    # Build a Graph that trains the model with one batch of examples and
-    # updates the model parameters.
-    train_op = train(loss, global_step)
+        # Create a saver.
+        saver = tf.train.Saver(tf.all_variables())
 
-    # Create a saver.
-    saver = tf.train.Saver(tf.all_variables())
+        # Build the summary operation based on the TF collection of Summaries.
+        summary_op = tf.merge_all_summaries()
 
-    # Build the summary operation based on the TF collection of Summaries.
-    summary_op = tf.merge_all_summaries()
+        with tf.Session() as sess:
+          # Build an initialization operation to run below.
+          init = tf.initialize_all_variables()
 
-    with tf.Session() as sess:
-      # Build an initialization operation to run below.
-      init = tf.initialize_all_variables()
+          # Start running operations on the Graph.
+          sess.run(init)
 
-      # Start running operations on the Graph.
-      sess.run(init)
+          # Start the queue runners.
+          coord = tf.train.Coordinator()
+          threads = tf.train.start_queue_runners(sess=sess, coord=coord)
 
-      # Start the queue runners.
-      coord = tf.train.Coordinator()
-      threads = tf.train.start_queue_runners(sess=sess, coord=coord)
-
-      summary_writer = tf.train.SummaryWriter(train_dir, sess.graph)
-      average_pl = tf.placeholder(tf.float32)
-      acc_pl = tf.placeholder(tf.float32)
-      average_summary = tf.scalar_summary("test_average_loss", average_pl)
-      acc_summary = tf.scalar_summary("test_accuracy", acc_pl)
-      for step in xrange(max_steps):
-        image_batch ,label_batch = sess.run([images, labels])
-        # since we still use mini-batches in eval, still set bn-layer phase_train = True
-        feed_dict = {
-          train_data_node: image_batch,
-          train_labels_node: label_batch,
-          phase_train: True
-        }
-        # storeImageQueue(image_batch, label_batch, step)
-        start_time = time.time()
-
-        _, loss_value = sess.run([train_op, loss], feed_dict=feed_dict)
-        duration = time.time() - start_time
-
-        assert not np.isnan(loss_value), 'Model diverged with loss = NaN'
-
-        if step % 10 == 0:
-          num_examples_per_step = batch_size
-          examples_per_sec = num_examples_per_step / duration
-          sec_per_batch = float(duration)
-
-          format_str = ('%s: step %d, loss = %.2f (%.1f examples/sec; %.3f '
-                      'sec/batch)')
-          print (format_str % (datetime.now(), step, loss_value,
-                               examples_per_sec, sec_per_batch))
-
-          # eval current training batch pre-class accuracy
-          pred = sess.run(eval_prediction, feed_dict=feed_dict)
-          per_class_acc(eval_batches(image_batch, sess, eval_prediction=pred), label_batch)
-
-        if step % 100 == 0:
-          print("start testing.....")
-          total_val_loss = 0.0
-          hist = np.zeros((NUM_CLASSES, NUM_CLASSES))
-          for test_step in range(TEST_ITER):
-            val_images_batch, val_labels_batch = sess.run([val_images, val_labels])
-
-            _val_loss, _val_pred = sess.run([loss, eval_prediction], feed_dict={
-              train_data_node: val_images_batch,
-              train_labels_node: val_labels_batch,
+          summary_writer = tf.train.SummaryWriter(train_dir, sess.graph)
+          average_pl = tf.placeholder(tf.float32)
+          acc_pl = tf.placeholder(tf.float32)
+          average_summary = tf.scalar_summary("test_average_loss", average_pl)
+          acc_summary = tf.scalar_summary("test_accuracy", acc_pl)
+          for step in xrange(max_steps):
+            image_batch ,label_batch = sess.run([images, labels])
+            # since we still use mini-batches in eval, still set bn-layer phase_train = True
+            feed_dict = {
+              train_data_node: image_batch,
+              train_labels_node: label_batch,
               phase_train: True
-            })
-            total_val_loss += _val_loss
-            hist += get_hist(_val_pred, val_labels_batch)
-          print("val loss: ", total_val_loss / TEST_ITER)
-          acc_total = np.diag(hist).sum() / hist.sum()
-          test_summary_str = sess.run(average_summary, feed_dict={average_pl: total_val_loss / TEST_ITER})
-          acc_summary_str = sess.run(acc_summary, feed_dict={acc_pl: acc_total})
-          print_hist_summery(hist)
-          # per_class_acc(eval_batches(val_images_batch, sess, eval_prediction=_val_pred), val_labels_batch)
+            }
+            # storeImageQueue(image_batch, label_batch, step)
+            start_time = time.time()
 
-          summary_str = sess.run(summary_op, feed_dict=feed_dict)
-          summary_writer.add_summary(summary_str, step)
-          summary_writer.add_summary(test_summary_str, step)
-          summary_writer.add_summary(acc_summary_str, step)
-        # Save the model checkpoint periodically.
-        if step % 1000 == 0 or (step + 1) == max_steps:
-          checkpoint_path = os.path.join(train_dir, 'model.ckpt')
-          saver.save(sess, checkpoint_path, global_step=step)
+            _, loss_value = sess.run([train_op, loss], feed_dict=feed_dict)
+            duration = time.time() - start_time
 
-      coord.request_stop()
-      coord.join(threads)
+            assert not np.isnan(loss_value), 'Model diverged with loss = NaN'
+
+            if step % 10 == 0:
+              num_examples_per_step = batch_size
+              examples_per_sec = num_examples_per_step / duration
+              sec_per_batch = float(duration)
+
+              format_str = ('%s: step %d, loss = %.2f (%.1f examples/sec; %.3f '
+                          'sec/batch)')
+              print (format_str % (datetime.now(), step, loss_value,
+                                   examples_per_sec, sec_per_batch))
+
+              # eval current training batch pre-class accuracy
+              pred = sess.run(eval_prediction, feed_dict=feed_dict)
+              per_class_acc(eval_batches(image_batch, sess, eval_prediction=pred), label_batch)
+
+            if step % 100 == 0:
+              print("start testing.....")
+              total_val_loss = 0.0
+              hist = np.zeros((NUM_CLASSES, NUM_CLASSES))
+              for test_step in range(TEST_ITER):
+                val_images_batch, val_labels_batch = sess.run([val_images, val_labels])
+
+                _val_loss, _val_pred = sess.run([loss, eval_prediction], feed_dict={
+                  train_data_node: val_images_batch,
+                  train_labels_node: val_labels_batch,
+                  phase_train: True
+                })
+                total_val_loss += _val_loss
+                hist += get_hist(_val_pred, val_labels_batch)
+              print("val loss: ", total_val_loss / TEST_ITER)
+              acc_total = np.diag(hist).sum() / hist.sum()
+              test_summary_str = sess.run(average_summary, feed_dict={average_pl: total_val_loss / TEST_ITER})
+              acc_summary_str = sess.run(acc_summary, feed_dict={acc_pl: acc_total})
+              print_hist_summery(hist)
+              # per_class_acc(eval_batches(val_images_batch, sess, eval_prediction=_val_pred), val_labels_batch)
+
+              summary_str = sess.run(summary_op, feed_dict=feed_dict)
+              summary_writer.add_summary(summary_str, step)
+              summary_writer.add_summary(test_summary_str, step)
+              summary_writer.add_summary(acc_summary_str, step)
+            # Save the model checkpoint periodically.
+            if step % 1000 == 0 or (step + 1) == max_steps:
+              checkpoint_path = os.path.join(train_dir, 'model.ckpt')
+              saver.save(sess, checkpoint_path, global_step=step)
+
+          coord.request_stop()
+          coord.join(threads)

@@ -67,7 +67,7 @@ def CamVid_reader_seq(filename_queue, seq_length):
     image_bytes = tf.image.decode_png(imageValue)
     label_bytes = tf.image.decode_png(labelValue)
     image = tf.cast(tf.reshape(image_bytes, (IMAGE_HEIGHT, IMAGE_WIDTH, IMAGE_DEPTH)), tf.float32)
-    label = tf.reshape(label_bytes, (IMAGE_HEIGHT, IMAGE_WIDTH, 1))
+    label = tf.cast(tf.reshape(label_bytes, (IMAGE_HEIGHT, IMAGE_WIDTH, 1)), tf.int64)
     image_seq.append(image)
     label_seq.append(label)
   return image_seq, label_seq
@@ -88,10 +88,9 @@ def CamVid_reader(filename_queue):
 
   return image, label
 
-def get_filename_list_seq(path):
+def get_filename_list_seq(path, seq_length):
   fd = open(path)
   total_train_file = 367
-  seq_length = 5
   im_seq = []
   label_seq = []
   image_filenames = []
