@@ -7,6 +7,7 @@ import math
 import Image
 import skimage
 import skimage.io
+import SimpleITK as sitk
 
 IMAGE_HEIGHT = 360
 IMAGE_WIDTH = 480
@@ -88,6 +89,35 @@ def CamVid_reader(filename_queue):
 
   return image, label
 
+def Miccai_reader_seq(filename_queue, seq_length):
+  im_seq = []
+  la_seq = []
+  seed_filename = np.random.choice(filename_queue, 1)
+  print(seed_filename)
+  seed = np.random.rand() % (155 - seq_length)
+  seed=100
+  for i in seed_filename:
+      im = [0,0,0,0] # to reserve order
+      for ii in os.listdir(i):
+          fpath = i + "/" + ii
+          for j in os.listdir(fpath):
+            if ".mha" not in j or "N4" in j:
+              continue
+            if "OT" in j:
+              la = sitk.GetArrayFromImage(sitk.ReadImage(fpath + "/" + j))[seed : seed+seq_length]
+            elif "Flair" in j:
+              im[0] = sitk.GetArrayFromImage(sitk.ReadImage(fpath + "/" + j))[seed : seed+seq_length]
+            elif "T1c" in j:
+              im[1] = sitk.GetArrayFromImage(sitk.ReadImage(fpath + "/" + j))[seed : seed+seq_length]
+            elif "T1" in j:
+              im[2] = sitk.GetArrayFromImage(sitk.ReadImage(fpath + "/" + j))[seed : seed+seq_length]
+            elif "T2" in j:
+              im[3] = sitk.GetArrayFromImage(sitk.ReadImage(fpath + "/" + j))[seed : seed+seq_length]
+      im_seq = tf.constant(np.transpose(im,[1,2,3,0]), tf.float32)
+      la_seq = tf.constant(la, tf.uint8, shape=[seq_length,240,240,1])
+  return im_seq, la_seq
+
+
 def get_filename_list_seq(path, seq_length):
   fd = open(path)
   total_train_file = 367
@@ -121,6 +151,19 @@ def get_filename_list(path):
     image_filenames.append(i[0])
     label_filenames.append(i[1])
   return image_filenames, label_filenames
+
+def MiccaiInputs_seq(filenames, batch_size, seq_length):
+  image_seq, label_seq = Miccai_reader_seq(filenames, seq_length)
+  min_fraction_of_examples_in_queue = 0.4
+  min_queue_examples = int(73 *
+                           min_fraction_of_examples_in_queue)
+  print ('Filling queue with %d CamVid seq_images before starting to train. '
+         'This will take a few minutes.' % min_queue_examples)
+
+  # Generate a batch of images and labels by building up a queue of examples.
+  return _generate_image_and_label_batch(image_seq, label_seq,
+                                         min_queue_examples, batch_size,
+                                         shuffle=True)
 
 def CamVidInputs_seq(image_filenames, label_filenames, batch_size, seq_length):
   images = ops.convert_to_tensor(image_filenames, dtype=dtypes.string)
@@ -171,3 +214,40 @@ def get_all_test_data(im_list, la_list):
     labels.append(skimage.io.imread(la_filename))
     index += 1
   return np.array(images, dtype=np.float32), np.array(labels)
+
+def get_miccai_filename(seq_length):
+  path="/tmp2/r04921120/MIRA/BRATS2015_Training-2/HGG/"
+  path2="/tmp2/r04921120/MIRA/BRATS2015_Training-2/LGG/"
+  dl = os.listdir(path)
+  filenames = []
+  labels = []
+  files = []
+  for index,p in enumerate(dl):
+      filenames.append(path+"/"+p)
+  return filenames
+def get_miccai_data(filenames, batch_size, seq_length):
+  im_seq = []
+  la_seq = []
+  sample_len = 4
+  seed_filename = np.random.choice(filenames, batch_size)
+  for i in seed_filename:
+      im = [0,0,0,0] # to reserve order
+      seed = np.random.rand() % (155 - sample_len*seq_length - 50 ) + 50
+      for ii in os.listdir(i):
+          fpath = i + "/" + ii
+          for j in os.listdir(fpath):
+            if ".mha" not in j or "N4" in j:
+              continue
+            if "OT" in j:
+              la = sitk.GetArrayFromImage(sitk.ReadImage(fpath + "/" + j))[seed : seed+seq_length*sample_len : sample_len]
+            elif "Flair" in j:
+              im[0] = sitk.GetArrayFromImage(sitk.ReadImage(fpath + "/" + j))[seed : seed+seq_length*sample_len : sample_len]
+            elif "T1c" in j:
+              im[1] = sitk.GetArrayFromImage(sitk.ReadImage(fpath + "/" + j))[seed : seed+seq_length*sample_len : sample_len]
+            elif "T1" in j:
+              im[2] = sitk.GetArrayFromImage(sitk.ReadImage(fpath + "/" + j))[seed : seed+seq_length*sample_len : sample_len]
+            elif "T2" in j:
+              im[3] = sitk.GetArrayFromImage(sitk.ReadImage(fpath + "/" + j))[seed : seed+seq_length*sample_len : sample_len]
+      im_seq.append(np.transpose(im,[1,2,3,0]))
+      la_seq.append(la[..., np.newaxis])
+  return np.asarray(im_seq), np.asarray(la_seq)

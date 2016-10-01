@@ -111,3 +111,9 @@ def eval_batches(data, sess, eval_prediction=None):
         batch_predictions = eval_prediction
         predictions[begin:, :] = batch_predictions[begin - size:, :]
     return predictions
+    
+def count_freq(label_batch, batch_size):
+  hist = np.zeros(6)
+  for i in range(batch_size):
+    new_hist = np.bincount(label_batch[i].flatten())
+    print(new_hist)

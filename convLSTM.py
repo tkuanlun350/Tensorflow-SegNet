@@ -63,7 +63,7 @@ class ConvLSTMCell(rnn_cell.RNNCell):
   def output_size(self):
     return self._num_units
 
-  def zero_state(self, batch_size, height, width):
+  def zero_state(self, batch_size=3, dtype=None, height=15, width=15):
     return tf.zeros([batch_size, height, width, self._num_units*2])
 
   def __call__(self, inputs, state, k_size=7, scope=None):

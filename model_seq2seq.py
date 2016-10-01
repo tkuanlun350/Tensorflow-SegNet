@@ -23,7 +23,7 @@ import Utils
 import convGRU
 import convLSTM
 from Inputs import *
-
+"""
 LOSS_WEIGHT = np.array([
   0.2595,
   0.1826,
@@ -37,6 +37,15 @@ LOSS_WEIGHT = np.array([
   6.2478,
   7.3614,
 ]) # class 0~10
+"""
+LOSS_WEIGHT = np.asarray([
+  0.0616944799702,
+  3.89114328416,
+  0.718496198987,
+  3.24645148591,
+  1.64418466389,
+  0.0182122198045
+]) # class 0~5
 
 @ops.RegisterGradient("MaxPoolWithArgmax")
 def _MaxPoolWithArgmaxGrad(op, grad, unused_argmax_grad):
@@ -53,16 +62,18 @@ MOVING_AVERAGE_DECAY = 0.9999     # The decay to use for the moving average.
 NUM_EPOCHS_PER_DECAY = 350.0      # Epochs after which learning rate decays.
 LEARNING_RATE_DECAY_FACTOR = 0.1  # Learning rate decay factor.
 
-INITIAL_LEARNING_RATE = 0.00001      # Initial learning rate.
+INITIAL_LEARNING_RATE = 0.001      # Initial learning rate.
 EVAL_BATCH_SIZE = 1
 BATCH_SIZE = 3
-SEQUENCE_LENGTH = 3
+SEQUENCE_LENGTH = 10
 # for CamVid
 IMAGE_HEIGHT = 360
 IMAGE_WIDTH = 480
-IMAGE_DEPTH = 3
+# IMAGE_DEPTH = 3
+# for miccai
+IMAGE_DEPTH = 4
 
-NUM_CLASSES = 11
+NUM_CLASSES = 6
 NUM_EXAMPLES_PER_EPOCH_FOR_TRAIN = 367
 NUM_EXAMPLES_PER_EPOCH_FOR_TEST = 101
 NUM_EXAMPLES_PER_EPOCH_FOR_EVAL = 1
@@ -312,22 +323,22 @@ def encoder(images, phase_train, reuse=False):
   return pool4
 
 def decoder(inputT, phase_train, batch_size, reuse=False):
-  upsample4 = deconv_layer(inputT, [2, 2, 64, 64], [batch_size, 45, 60, 64], 2, "up4", reuse=reuse)
+  upsample4 = deconv_layer(inputT, [2, 2, 64, 64], [batch_size, 30, 30, 64], 2, "up4", reuse=reuse)
   # decode 4
   conv_decode4 = conv_layer_with_bn(upsample4, [7, 7, 64, 64], phase_train, False, name="conv_decode4", reuse=reuse)
 
   # upsample 3
-  upsample3= deconv_layer(conv_decode4, [2, 2, 64, 64], [batch_size, 90, 120, 64], 2, "up3", reuse=reuse)
+  upsample3= deconv_layer(conv_decode4, [2, 2, 64, 64], [batch_size, 60, 60, 64], 2, "up3", reuse=reuse)
   # decode 3
   conv_decode3 = conv_layer_with_bn(upsample3, [7, 7, 64, 64], phase_train, False, name="conv_decode3", reuse=reuse)
 
   # upsample2
-  upsample2= deconv_layer(conv_decode3, [2, 2, 64, 64], [batch_size, 180, 240, 64], 2, "up2", reuse=reuse)
+  upsample2= deconv_layer(conv_decode3, [2, 2, 64, 64], [batch_size, 120, 120, 64], 2, "up2", reuse=reuse)
   # decode 2
   conv_decode2 = conv_layer_with_bn(upsample2, [7, 7, 64, 64], phase_train, False, name="conv_decode2", reuse=reuse)
 
   # upsample1
-  upsample1= deconv_layer(conv_decode2, [2, 2, 64, 64], [batch_size, 360, 480, 64], 2, "up1", reuse=reuse)
+  upsample1= deconv_layer(conv_decode2, [2, 2, 64, 64], [batch_size, 240, 240, 64], 2, "up1", reuse=reuse)
   # decode4
   conv_decode1 = conv_layer_with_bn(upsample1, [7, 7, 64, 64], phase_train, False, name="conv_decode1", reuse=reuse)
 
@@ -428,11 +439,11 @@ def inference(images, labels, phase_train):
     #sss = encoder_inputs[0].get_shape()
   # print("encoder", encoder_inputs)
   # [[batch, input_size]...T]
-  cell = convGRU.ConvGRUCell(encoder_inputs1[0].get_shape(), 64, 64, 3)
-  # cell = convLSTM.ConvLSTMCell()
+  # cell = convGRU.ConvGRUCell(encoder_inputs1[0].get_shape(), 64, 64, 3)
+  cell = convLSTM.ConvLSTMCell(64)
   # output, state = seq2seq(encoder_inputs, encoder_inputs, cell, phase_train, batch_size)
   with tf.variable_scope("basic_convGRU_seq2seq"):
-    output, enc_state = rnn.rnn(cell, encoder_inputs1, dtype=dtypes.float32)
+    output, enc_state = rnn.rnn(cell, encoder_inputs1, dtype=tf.float32)
   # output = [[batch, input_size]...T]
   # temp
   # output = encoder_inputs
@@ -494,20 +505,23 @@ def seq_main():
   seq_length = SEQUENCE_LENGTH
   max_steps = 5000
   train_dir = "/tmp3/first350/TensorFlow/Logs_seq"
+  ff = get_miccai_filename(seq_length)
   with tf.Graph().as_default():
     train_data_node = tf.placeholder(
           tf.float32,
-          shape=[batch_size, seq_length, 360, 480, 3])
+          shape=[batch_size, seq_length, 240, 240, 4])
 
-    train_labels_node = tf.placeholder(tf.int64, shape=[batch_size, seq_length, 360, 480, 1])
+    train_labels_node = tf.placeholder(tf.int64, shape=[batch_size, seq_length, 240, 240, 1])
 
     phase_train = tf.placeholder(tf.bool, name='phase_train')
 
     global_step = tf.Variable(0, trainable=False)
 
-    image_seq, label_seq = CamVidInputs_seq(image_filenames, label_filenames, batch_size, seq_length=seq_length)
+    # im_seq, la_seq = MiccaiInputs_seq(ff, batch_size, seq_length)
 
-    val_images, val_labels = CamVidInputs_seq(val_image_filenames, val_label_filenames, batch_size, seq_length=seq_length)
+    # image_seq, label_seq = CamVidInputs_seq(image_filenames, label_filenames, batch_size, seq_length=seq_length)
+
+    # val_images, val_labels = CamVidInputs_seq(val_image_filenames, val_label_filenames, batch_size, seq_length=seq_length)
 
     loss, eval_prediction = inference(train_data_node, train_labels_node, phase_train)
 
@@ -535,7 +549,10 @@ def seq_main():
       acc_summary = tf.scalar_summary("test_accuracy", acc_pl)
 
       for step in range(max_steps):
-        image_batch ,label_batch = sess.run([image_seq, label_seq])
+        # image_batch ,label_batch = sess.run([image_seq, label_seq])
+        # image_batch, label_batch = sess.run([im_seq, la_seq])
+        image_batch, label_batch = get_miccai_data(ff, batch_size, seq_length)
+        # freq = Utils.count_freq(label_batch, batch_size)
         feed_dict = {
            train_data_node :image_batch,
            train_labels_node: label_batch,
@@ -558,6 +575,7 @@ def seq_main():
           Utils.eval_seq(pred, label_batch, batch_size, seq_length, NUM_CLASSES)
 
         if step % 100 == 0:
+          """
           print("start testing.....")
           total_val_loss = 0.0
           hist = np.zeros((NUM_CLASSES, NUM_CLASSES))
@@ -577,11 +595,11 @@ def seq_main():
           test_summary_str = sess.run(average_summary, feed_dict={average_pl: total_val_loss / TEST_ITER})
           acc_summary_str = sess.run(acc_summary, feed_dict={acc_pl: acc_total})
           Utils.print_hist_summery(hist, NUM_CLASSES)
-
+          """
           summary_str = sess.run(summary_op, feed_dict=feed_dict)
           summary_writer.add_summary(summary_str, step)
-          summary_writer.add_summary(test_summary_str, step)
-          summary_writer.add_summary(acc_summary_str, step)
+          #summary_writer.add_summary(test_summary_str, step)
+          #summary_writer.add_summary(acc_summary_str, step)
         # Save the model checkpoint periodically.
         if step % 1000 == 0 or (step + 1) == max_steps:
           checkpoint_path = os.path.join(train_dir, 'seq_model.ckpt')
