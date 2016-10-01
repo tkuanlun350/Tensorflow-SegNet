@@ -89,7 +89,9 @@ def eval_seq(pred, labels, batch_size, sequence_length, num_class):
   for i in range(batch_size):
     hist += fast_hist(labels[i].flatten(), pred[i].argmax(3).flatten(), num_class)
   acc_total = np.diag(hist).sum() / hist.sum()
+  acc_no_zero = (np.diag(hist).sum() - hist[0][0]) / (hist.sum() - hist[0][0])
   print ('accuracy = %f'%np.nanmean(acc_total))
+  print ('accuracy without0  = %f'%np.nanmean(acc_no_zero))
   iu = np.diag(hist) / (hist.sum(1) + hist.sum(0) - np.diag(hist))
   print ('mean IU  = %f'%np.nanmean(iu))
   for ii in range(num_class):
@@ -111,9 +113,10 @@ def eval_batches(data, sess, eval_prediction=None):
         batch_predictions = eval_prediction
         predictions[begin:, :] = batch_predictions[begin - size:, :]
     return predictions
-    
+
 def count_freq(label_batch, batch_size):
   hist = np.zeros(6)
   for i in range(batch_size):
-    new_hist = np.bincount(label_batch[i].flatten())
-    print(new_hist)
+    new_hist = np.bincount(label_batch[i].flatten(), minlength=6)
+    hist += new_hist
+  print(hist)

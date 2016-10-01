@@ -62,7 +62,7 @@ MOVING_AVERAGE_DECAY = 0.9999     # The decay to use for the moving average.
 NUM_EPOCHS_PER_DECAY = 350.0      # Epochs after which learning rate decays.
 LEARNING_RATE_DECAY_FACTOR = 0.1  # Learning rate decay factor.
 
-INITIAL_LEARNING_RATE = 0.001      # Initial learning rate.
+INITIAL_LEARNING_RATE = 0.0001      # Initial learning rate.
 EVAL_BATCH_SIZE = 1
 BATCH_SIZE = 3
 SEQUENCE_LENGTH = 10
@@ -406,7 +406,7 @@ def sequence_loss(logits, targets, weights,
                   average_across_timesteps=True, average_across_batch=True,
                   softmax_loss_function=None, name=None):
     with tf.name_scope('sequence_loss'):
-        cost = tf.reduce_mean(sequence_loss_by_example(
+        cost = tf.reduce_sum(sequence_loss_by_example(
         logits, targets, weights,
         average_across_timesteps=average_across_timesteps,
         softmax_loss_function=softmax_loss_function))
@@ -573,6 +573,7 @@ def seq_main():
                                examples_per_sec, sec_per_batch))
           pred = sess.run(eval_prediction, feed_dict=feed_dict)
           Utils.eval_seq(pred, label_batch, batch_size, seq_length, NUM_CLASSES)
+          freq = Utils.count_freq(label_batch, batch_size)
 
         if step % 100 == 0:
           """
