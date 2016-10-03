@@ -43,8 +43,7 @@ LOSS_WEIGHT = np.asarray([
   3.89114328416,
   0.718496198987,
   3.24645148591,
-  1.64418466389,
-  0.0182122198045
+  1.64418466389
 ]) # class 0~5
 
 @ops.RegisterGradient("MaxPoolWithArgmax")
@@ -73,11 +72,12 @@ IMAGE_WIDTH = 480
 # for miccai
 IMAGE_DEPTH = 4
 
-NUM_CLASSES = 6
+NUM_CLASSES = 5
 NUM_EXAMPLES_PER_EPOCH_FOR_TRAIN = 367
 NUM_EXAMPLES_PER_EPOCH_FOR_TEST = 101
 NUM_EXAMPLES_PER_EPOCH_FOR_EVAL = 1
-TEST_ITER = NUM_EXAMPLES_PER_EPOCH_FOR_TEST / (BATCH_SIZE * SEQUENCE_LENGTH)
+# TEST_ITER = NUM_EXAMPLES_PER_EPOCH_FOR_TEST / (BATCH_SIZE * SEQUENCE_LENGTH)
+TEST_ITER = (155//SEQUENCE_LENGTH)*(24 // BATCH_SIZE)
 
 def _activation_summary(x):
   """Helper to create summaries for activations.
@@ -503,7 +503,7 @@ def seq_main():
   val_image_filenames, val_label_filenames = get_filename_list_seq("/tmp3/first350/SegNet-Tutorial/CamVid/val.txt", SEQUENCE_LENGTH)
   batch_size = BATCH_SIZE
   seq_length = SEQUENCE_LENGTH
-  max_steps = 5000
+  max_steps = 50000
   train_dir = "/tmp3/first350/TensorFlow/Logs_seq"
   ff = get_miccai_filename(seq_length)
   with tf.Graph().as_default():
@@ -551,7 +551,7 @@ def seq_main():
       for step in range(max_steps):
         # image_batch ,label_batch = sess.run([image_seq, label_seq])
         # image_batch, label_batch = sess.run([im_seq, la_seq])
-        image_batch, label_batch = get_miccai_data(ff, batch_size, seq_length)
+        image_batch, label_batch = get_miccai_data(ff[0:250], batch_size, seq_length)
         # freq = Utils.count_freq(label_batch, batch_size)
         feed_dict = {
            train_data_node :image_batch,
@@ -573,15 +573,21 @@ def seq_main():
                                examples_per_sec, sec_per_batch))
           pred = sess.run(eval_prediction, feed_dict=feed_dict)
           Utils.eval_seq(pred, label_batch, batch_size, seq_length, NUM_CLASSES)
-          freq = Utils.count_freq(label_batch, batch_size)
+          # freq = Utils.count_freq(label_batch, batch_size)
 
         if step % 100 == 0:
-          """
           print("start testing.....")
           total_val_loss = 0.0
           hist = np.zeros((NUM_CLASSES, NUM_CLASSES))
+          brain_index = 0
+          depth_index = 0
           for test_step in range(TEST_ITER):
-            val_images_batch, val_labels_batch = sess.run([val_images, val_labels])
+            #val_images_batch, val_labels_batch = sess.run([val_images, val_labels])
+            val_images_batch, val_labels_batch = get_miccai_test_data(ff[250: 274], batch_size, seq_length, brain_index, depth_index)
+            depth_index += seq_length
+            if (depth_index + seq_length > 155):
+              brain_index += batch_size
+              depth_index = 0
 
             _val_loss, _val_pred = sess.run([loss, eval_prediction], feed_dict={
               train_data_node: val_images_batch,
@@ -596,11 +602,10 @@ def seq_main():
           test_summary_str = sess.run(average_summary, feed_dict={average_pl: total_val_loss / TEST_ITER})
           acc_summary_str = sess.run(acc_summary, feed_dict={acc_pl: acc_total})
           Utils.print_hist_summery(hist, NUM_CLASSES)
-          """
           summary_str = sess.run(summary_op, feed_dict=feed_dict)
           summary_writer.add_summary(summary_str, step)
-          #summary_writer.add_summary(test_summary_str, step)
-          #summary_writer.add_summary(acc_summary_str, step)
+          summary_writer.add_summary(test_summary_str, step)
+          summary_writer.add_summary(acc_summary_str, step)
         # Save the model checkpoint periodically.
         if step % 1000 == 0 or (step + 1) == max_steps:
           checkpoint_path = os.path.join(train_dir, 'seq_model.ckpt')

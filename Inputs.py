@@ -224,6 +224,10 @@ def get_miccai_filename(seq_length):
   files = []
   for index,p in enumerate(dl):
       filenames.append(path+"/"+p)
+  for index,p in enumerate(os.listdir(path2)):
+      filenames.append(path2+"/"+p)
+  print("filename len: ", len(filenames))
+  np.random.shuffle(filenames)
   return filenames
 def get_miccai_data(filenames, batch_size, seq_length):
   im_seq = []
@@ -233,6 +237,33 @@ def get_miccai_data(filenames, batch_size, seq_length):
   for i in seed_filename:
       im = [0,0,0,0] # to reserve order
       seed = np.random.rand() % (155 - sample_len*seq_length - 50 ) + 50
+      for ii in os.listdir(i):
+          fpath = i + "/" + ii
+          for j in os.listdir(fpath):
+            if ".mha" not in j or "N4" in j:
+              continue
+            if "OT" in j:
+              la = sitk.GetArrayFromImage(sitk.ReadImage(fpath + "/" + j))[seed : seed+seq_length*sample_len : sample_len]
+            elif "Flair" in j:
+              im[0] = sitk.GetArrayFromImage(sitk.ReadImage(fpath + "/" + j))[seed : seed+seq_length*sample_len : sample_len]
+            elif "T1c" in j:
+              im[1] = sitk.GetArrayFromImage(sitk.ReadImage(fpath + "/" + j))[seed : seed+seq_length*sample_len : sample_len]
+            elif "T1" in j:
+              im[2] = sitk.GetArrayFromImage(sitk.ReadImage(fpath + "/" + j))[seed : seed+seq_length*sample_len : sample_len]
+            elif "T2" in j:
+              im[3] = sitk.GetArrayFromImage(sitk.ReadImage(fpath + "/" + j))[seed : seed+seq_length*sample_len : sample_len]
+      im_seq.append(np.transpose(im,[1,2,3,0]))
+      la_seq.append(la[..., np.newaxis])
+  return np.asarray(im_seq), np.asarray(la_seq)
+
+def get_miccai_test_data(filenames, batch_size, seq_length, brain_index, depth_index):
+  im_seq = []
+  la_seq = []
+  sample_len = 1
+  seed_filename = filenames[brain_index: brain_index+batch_size]
+  for i in seed_filename:
+      im = [0,0,0,0] # to reserve order
+      seed = depth_index
       for ii in os.listdir(i):
           fpath = i + "/" + ii
           for j in os.listdir(fpath):
