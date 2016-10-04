@@ -441,9 +441,10 @@ def inference(images, labels, phase_train):
   # [[batch, input_size]...T]
   # cell = convGRU.ConvGRUCell(encoder_inputs1[0].get_shape(), 64, 64, 3)
   cell = convLSTM.ConvLSTMCell(64)
+  stacked_lstm = convLSTM.MultiRNNCell([cell] * 2)
   # output, state = seq2seq(encoder_inputs, encoder_inputs, cell, phase_train, batch_size)
   with tf.variable_scope("basic_convGRU_seq2seq"):
-    output, enc_state = rnn.rnn(cell, encoder_inputs1, dtype=tf.float32)
+    output, enc_state = rnn.rnn(stacked_lstm, encoder_inputs1, dtype=tf.float32)
   # output = [[batch, input_size]...T]
   # temp
   # output = encoder_inputs

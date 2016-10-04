@@ -11,6 +11,7 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.ops import rnn_cell
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops.rnn_cell import LSTMStateTuple
+from tensorflow.python.util import nest
 
 # Future : Replace it with tensorflow.python.util.nest
 import collections
@@ -89,6 +90,68 @@ class ConvLSTMCell(rnn_cell.RNNCell):
       else:
         new_state = array_ops.concat(3, [new_c, new_h])
       return new_h, new_state
+
+class MultiRNNCell(rnn_cell.RNNCell):
+
+  def __init__(self, cells, state_is_tuple=False):
+    """
+      Stacked convLSTM , modified from ops.rnn_cell MultiRNNCell
+    """
+    if not cells:
+      raise ValueError("Must specify at least one cell for MultiRNNCell.")
+    self._cells = cells
+    self._state_is_tuple = state_is_tuple
+    self._num_units = cells[0].output_size
+    if not state_is_tuple:
+      if any(nest.is_sequence(c.state_size) for c in self._cells):
+        raise ValueError("Some cells return tuples of states, but the flag "
+                         "state_is_tuple is not set.  State sizes are: %s"
+                         % str([c.state_size for c in self._cells]))
+
+  @property
+  def state_size(self):
+    if self._state_is_tuple:
+      return tuple(cell.state_size for cell in self._cells)
+    else:
+      return sum([cell.state_size for cell in self._cells])
+
+  @property
+  def output_size(self):
+    return self._cells[-1].output_size
+
+  def zero_state(self, batch_size=3, dtype=None, height=15, width=15):
+    return tf.zeros([len(self._cells), batch_size, height, width, self._num_units*2])
+
+  def __call__(self, inputs, state, scope=None):
+    """Run this multi-layer cell on inputs, starting from state."""
+    with vs.variable_scope(scope or type(self).__name__):  # "MultiRNNCell"
+      cur_state_pos = 0
+      cur_inp = inputs
+      new_states = []
+      for i, cell in enumerate(self._cells):
+        with vs.variable_scope("Cell%d" % i):
+          if self._state_is_tuple:
+            if not nest.is_sequence(state):
+              raise ValueError(
+                  "Expected state to be a tuple of length %d, but received: %s"
+                  % (len(self.state_size), state))
+            cur_state = state[i]
+          else:
+            # print("STATE",state)
+            """
+            cur_state = array_ops.slice(
+                state, [0, cur_state_pos], [-1, cell.state_size])
+            """
+            cur_state = array_ops.unpack(state)[i]
+            # cur_state_pos += cell.state_size
+          cur_inp, new_state = cell(cur_inp, cur_state)
+          new_states.append(new_state)
+    """
+    new_states = (tuple(new_states) if self._state_is_tuple
+                  else array_ops.concat(1, new_states))
+    """
+    new_states = array_ops.pack(new_states)
+    return cur_inp, new_states
 
 def _conv(args, output_size, k_size, bias=True, bias_start=0.0, scope=None):
   if args is None or (_is_sequence(args) and not args):
