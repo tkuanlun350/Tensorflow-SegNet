@@ -32,7 +32,7 @@ MOVING_AVERAGE_DECAY = 0.9999     # The decay to use for the moving average.
 NUM_EPOCHS_PER_DECAY = 350.0      # Epochs after which learning rate decays.
 LEARNING_RATE_DECAY_FACTOR = 0.1  # Learning rate decay factor.
 
-INITIAL_LEARNING_RATE = 0.00001      # Initial learning rate.
+INITIAL_LEARNING_RATE = 0.001      # Initial learning rate.
 EVAL_BATCH_SIZE = 5
 BATCH_SIZE = 5
 READ_DATA_SIZE = 100
@@ -135,6 +135,21 @@ def msra_initializer(kl, dl):
     """
     stddev = math.sqrt(2. / (kl**2 * dl))
     return tf.truncated_normal_initializer(stddev=stddev)
+
+def orthogonal_initializer(scale = 1.1):
+    ''' From Lasagne and Keras. Reference: Saxe et al., http://arxiv.org/abs/1312.6120
+    '''
+    print('Warning -- You have opted to use the orthogonal_initializer function')
+    def _initializer(shape, dtype=tf.float32):
+      flat_shape = (shape[0], np.prod(shape[1:]))
+      a = np.random.normal(0.0, 1.0, flat_shape)
+      u, _, v = np.linalg.svd(a, full_matrices=False)
+      # pick the one with the correct shape
+      q = u if u.shape == flat_shape else v
+      q = q.reshape(shape) #this needs to be corrected to float32
+      print('you have initialized one orthogonal matrix.')
+      return tf.constant(scale * q[:shape[0], :shape[1]], dtype=tf.float32)
+    return _initializer
 
 def dump_unravel(indices, shape):
     """
@@ -260,10 +275,13 @@ def conv_layer_with_bn(inputT, shape, train_phase, activation=True, name=None):
     out_channel = shape[3]
     k_size = shape[0]
     with tf.variable_scope(name) as scope:
+      """
       kernel = _variable_with_weight_decay('weights',
                                            shape=shape,
                                            initializer=msra_initializer(k_size, in_channel),
                                            wd=None)
+      """
+      kernel = _variable_with_weight_decay('ort_weights', shape=shape, initializer=orthogonal_initializer(), wd=None)
       conv = tf.nn.conv2d(inputT, kernel, [1, 1, 1, 1], padding='SAME')
       biases = _variable_on_cpu('biases', [out_channel], tf.constant_initializer(0.0))
       bias = tf.nn.bias_add(conv, biases)
@@ -528,7 +546,7 @@ def test():
 if __name__ == "__main__":
   max_steps = 20000
   batch_size = BATCH_SIZE
-  train_dir = "/tmp3/first350/TensorFlow/Logs"
+  train_dir = "/tmp4/first350/TensorFlow/Logs"
   image_filenames, label_filenames = get_filename_list("/tmp3/first350/SegNet-Tutorial/CamVid/train.txt")
   val_image_filenames, val_label_filenames = get_filename_list("/tmp3/first350/SegNet-Tutorial/CamVid/val.txt")
   with tf.device('/gpu:3'):
@@ -577,8 +595,10 @@ if __name__ == "__main__":
           summary_writer = tf.train.SummaryWriter(train_dir, sess.graph)
           average_pl = tf.placeholder(tf.float32)
           acc_pl = tf.placeholder(tf.float32)
+          iu_pl = tf.placeholder(tf.float32)
           average_summary = tf.scalar_summary("test_average_loss", average_pl)
           acc_summary = tf.scalar_summary("test_accuracy", acc_pl)
+          iu_summary = tf.scalar_summary("Mean_IU", iu_pl)
           for step in xrange(max_steps):
             image_batch ,label_batch = sess.run([images, labels])
             # since we still use mini-batches in eval, still set bn-layer phase_train = True
@@ -625,8 +645,10 @@ if __name__ == "__main__":
                 hist += get_hist(_val_pred, val_labels_batch)
               print("val loss: ", total_val_loss / TEST_ITER)
               acc_total = np.diag(hist).sum() / hist.sum()
+              iu = np.diag(hist) / (hist.sum(1) + hist.sum(0) - np.diag(hist))
               test_summary_str = sess.run(average_summary, feed_dict={average_pl: total_val_loss / TEST_ITER})
               acc_summary_str = sess.run(acc_summary, feed_dict={acc_pl: acc_total})
+              iu_summary_str = sess.run(iu_summary, feed_dict={iu_pl: np.nanmean(iu)})
               print_hist_summery(hist)
               # per_class_acc(eval_batches(val_images_batch, sess, eval_prediction=_val_pred), val_labels_batch)
 
@@ -634,6 +656,7 @@ if __name__ == "__main__":
               summary_writer.add_summary(summary_str, step)
               summary_writer.add_summary(test_summary_str, step)
               summary_writer.add_summary(acc_summary_str, step)
+              summary_writer.add_summary(iu_summary_str, step)
             # Save the model checkpoint periodically.
             if step % 1000 == 0 or (step + 1) == max_steps:
               checkpoint_path = os.path.join(train_dir, 'model.ckpt')
