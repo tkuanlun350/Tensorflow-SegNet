@@ -232,7 +232,7 @@ def get_miccai_filename(seq_length):
 def get_miccai_data(filenames, batch_size, seq_length):
   im_seq = []
   la_seq = []
-  sample_len = 4
+  sample_len = 1
   seed_filename = np.random.choice(filenames, batch_size)
   for i in seed_filename:
       im = [0,0,0,0] # to reserve order

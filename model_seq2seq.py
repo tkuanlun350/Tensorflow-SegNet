@@ -161,6 +161,21 @@ def _variable_with_weight_decay(name, shape, initializer, wd):
     tf.add_to_collection('losses', weight_decay)
   return var
 
+def orthogonal_initializer(scale = 1.1):
+    ''' From Lasagne and Keras. Reference: Saxe et al., http://arxiv.org/abs/1312.6120
+    '''
+    print('Warning -- You have opted to use the orthogonal_initializer function')
+    def _initializer(shape, dtype=tf.float32):
+      flat_shape = (shape[0], np.prod(shape[1:]))
+      a = np.random.normal(0.0, 1.0, flat_shape)
+      u, _, v = np.linalg.svd(a, full_matrices=False)
+      # pick the one with the correct shape
+      q = u if u.shape == flat_shape else v
+      q = q.reshape(shape) #this needs to be corrected to float32
+      print('you have initialized one orthogonal matrix.')
+      return tf.constant(scale * q[:shape[0], :shape[1]], dtype=tf.float32)
+    return _initializer
+
 def msra_initializer(kl, dl):
     """
     kl for kernel size, dl for filter number
@@ -440,7 +455,7 @@ def inference(images, labels, phase_train):
   # print("encoder", encoder_inputs)
   # [[batch, input_size]...T]
   # cell = convGRU.ConvGRUCell(encoder_inputs1[0].get_shape(), 64, 64, 3)
-  cell = convLSTM.ConvLSTMCell(64)
+  cell = convLSTM.ConvLSTMCell(64, initializer=orthogonal_initializer())
   stacked_lstm = convLSTM.MultiRNNCell([cell] * 2)
   # output, state = seq2seq(encoder_inputs, encoder_inputs, cell, phase_train, batch_size)
   with tf.variable_scope("basic_convGRU_seq2seq"):
@@ -546,9 +561,10 @@ def seq_main():
       summary_writer = tf.train.SummaryWriter(train_dir, sess.graph)
       average_pl = tf.placeholder(tf.float32)
       acc_pl = tf.placeholder(tf.float32)
+      iu_pl = tf.placeholder(tf.float32)
       average_summary = tf.scalar_summary("test_average_loss", average_pl)
       acc_summary = tf.scalar_summary("test_accuracy", acc_pl)
-
+      iu_summary = tf.scalar_summary("Mean_IU", iu_pl)
       for step in range(max_steps):
         # image_batch ,label_batch = sess.run([image_seq, label_seq])
         # image_batch, label_batch = sess.run([im_seq, la_seq])
@@ -600,13 +616,16 @@ def seq_main():
 
           print("val loss: ", total_val_loss / TEST_ITER)
           acc_total = np.diag(hist).sum() / hist.sum()
+          iu = np.diag(hist) / (hist.sum(1) + hist.sum(0) - np.diag(hist))
           test_summary_str = sess.run(average_summary, feed_dict={average_pl: total_val_loss / TEST_ITER})
           acc_summary_str = sess.run(acc_summary, feed_dict={acc_pl: acc_total})
+          iu_summary_str = sess.run(iu_summary, feed_dict={iu_pl: np.nanmean(iu)})
           Utils.print_hist_summery(hist, NUM_CLASSES)
           summary_str = sess.run(summary_op, feed_dict=feed_dict)
           summary_writer.add_summary(summary_str, step)
           summary_writer.add_summary(test_summary_str, step)
           summary_writer.add_summary(acc_summary_str, step)
+          summary_writer.add_summary(iu_summary_str, step)
         # Save the model checkpoint periodically.
         if step % 1000 == 0 or (step + 1) == max_steps:
           checkpoint_path = os.path.join(train_dir, 'seq_model.ckpt')

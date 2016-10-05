@@ -76,7 +76,7 @@ class ConvLSTMCell(rnn_cell.RNNCell):
         c, h = array_ops.split(3, 2, state)
 
       # batch_size * height * width * channel
-      concat = _conv([inputs, h], 4 * self._num_units, k_size, True)
+      concat = _conv([inputs, h], 4 * self._num_units, k_size, True, initializer=initializer)
 
       # i = input_gate, j = new_input, f = forget_gate, o = output_gate
       i, j, f, o = array_ops.split(3, 4, concat)
@@ -153,7 +153,7 @@ class MultiRNNCell(rnn_cell.RNNCell):
     new_states = array_ops.pack(new_states)
     return cur_inp, new_states
 
-def _conv(args, output_size, k_size, bias=True, bias_start=0.0, scope=None):
+def _conv(args, output_size, k_size, bias=True, bias_start=0.0, initializer=None, scope=None):
   if args is None or (_is_sequence(args) and not args):
     raise ValueError("`args` must be specified")
   if not _is_sequence(args):
@@ -176,7 +176,7 @@ def _conv(args, output_size, k_size, bias=True, bias_start=0.0, scope=None):
       raise ValueError("Inconsistent height and width size in arguments: %s" % str(shapes))
 
   with vs.variable_scope(scope or "Conv"):
-    kernel = vs.get_variable("Kernel", [k_size, k_size, total_arg_size, output_size])
+    kernel = vs.get_variable("Kernel", [k_size, k_size, total_arg_size, output_size], initializer=initializer)
 
     if len(args) == 1:
       res = tf.nn.conv2d(args[0], kernel, [1, 1, 1, 1], padding='SAME')
