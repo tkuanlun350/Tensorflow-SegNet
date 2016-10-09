@@ -33,8 +33,8 @@ NUM_EPOCHS_PER_DECAY = 350.0      # Epochs after which learning rate decays.
 LEARNING_RATE_DECAY_FACTOR = 0.1  # Learning rate decay factor.
 
 INITIAL_LEARNING_RATE = 0.001      # Initial learning rate.
-EVAL_BATCH_SIZE = 5
-BATCH_SIZE = 5
+EVAL_BATCH_SIZE = 1
+BATCH_SIZE = 1
 READ_DATA_SIZE = 100
 # for CamVid
 IMAGE_HEIGHT = 360
@@ -494,7 +494,7 @@ def test():
   # testing should set BATCH_SIZE = 1
   batch_size = 1
 
-  image_filenames, label_filenames = get_filename_list("/tmp3/first350/SegNet-Tutorial/CamVid/train.txt")
+  image_filenames, label_filenames = get_filename_list("/tmp3/first350/SegNet-Tutorial/CamVid/test.txt")
 
   test_data_node = tf.placeholder(
         tf.float32,
@@ -506,7 +506,7 @@ def test():
 
   loss, logits = inference(test_data_node, test_labels_node, phase_train)
 
-  pred = tf.argmax(logits, dimension=3)
+  # pred = tf.argmax(logits, dimension=3)
 
   # get moving avg
   variable_averages = tf.train.ExponentialMovingAverage(
@@ -517,31 +517,26 @@ def test():
 
   with tf.Session() as sess:
     # Load checkpoint
-    saver.restore(sess, "/tmp4/first350/TensorFlow/Logs/model.ckpt-19999" )
-
-    images, labels = CamVidInputs(image_filenames, label_filenames, BATCH_SIZE)
-
+    saver.restore(sess, "/tmp4/first350/TensorFlow/Logs/model.ckpt-7000" )
+    images, labels = get_all_test_data(image_filenames, label_filenames)
     threads = tf.train.start_queue_runners(sess=sess)
+    hist = np.zeros((NUM_CLASSES, NUM_CLASSES))
+    for image_batch, label_batch  in zip(images, labels):
+      print(image_batch.shape, label_batch.shape)
+      feed_dict = {
+        test_data_node: image_batch,
+        test_labels_node: label_batch,
+        phase_train: False
+      }
+      dense_prediction = sess.run(logits, feed_dict=feed_dict)
+      print(dense_prediction.shape)
+      hist += get_hist(dense_prediction, label_batch)
+    acc_total = np.diag(hist).sum() / hist.sum()
+    iu = np.diag(hist) / (hist.sum(1) + hist.sum(0) - np.diag(hist))
+    print("acc: ", acc_total)
+    print("mean IU: ", np.nanmean(iu))
 
-    image_batch ,label_batch = sess.run([images, labels])
 
-    im = Image.fromarray(np.uint8(image_batch[0]))
-
-    im.save("test_batch_0.png")
-
-    Utils.writeImage(np.reshape(label_batch[0],(360,480)), "test_la_0.png")
-
-    feed_dict = {
-      test_data_node: image_batch,
-      test_labels_node: label_batch,
-      phase_train: False
-    }
-
-    dense_prediction, pred = sess.run([logits, pred], feed_dict=feed_dict)
-
-    per_class_acc(eval_batches(image_batch, sess, eval_prediction=dense_prediction), label_batch)
-
-    Utils.writeImage(pred[0], "./testresult.png")
 
 if __name__ == "__main__":
   max_steps = 20000
@@ -576,7 +571,7 @@ if __name__ == "__main__":
         train_op = train(loss, global_step)
 
         # Create a saver.
-        saver = tf.train.Saver(tf.all_variables())
+        saver = tf.train.Saver(tf.all_variables(), max_to_keep=50)
 
         # Build the summary operation based on the TF collection of Summaries.
         summary_op = tf.merge_all_summaries()
@@ -659,7 +654,7 @@ if __name__ == "__main__":
               summary_writer.add_summary(iu_summary_str, step)
             # Save the model checkpoint periodically.
             if step % 1000 == 0 or (step + 1) == max_steps:
-              checkpoint_path = os.path.join(train_dir, 'model.ckpt')
+              checkpoint_path = os.path.join(train_dir, 'model_trick.ckpt')
               saver.save(sess, checkpoint_path, global_step=step)
 
           coord.request_stop()

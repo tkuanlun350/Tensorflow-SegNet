@@ -13,7 +13,6 @@ import math
 from datetime import datetime
 import time
 import Image
-from tensorflow.python import control_flow_ops
 from math import ceil
 from tensorflow.python.ops import gen_nn_ops
 import skimage
@@ -23,7 +22,7 @@ import Utils
 import convGRU
 import convLSTM
 from Inputs import *
-"""
+
 LOSS_WEIGHT = np.array([
   0.2595,
   0.1826,
@@ -37,6 +36,7 @@ LOSS_WEIGHT = np.array([
   6.2478,
   7.3614,
 ]) # class 0~10
+
 """
 LOSS_WEIGHT = np.asarray([
   0.0616944799702,
@@ -45,7 +45,7 @@ LOSS_WEIGHT = np.asarray([
   3.24645148591,
   1.64418466389
 ]) # class 0~5
-
+"""
 @ops.RegisterGradient("MaxPoolWithArgmax")
 def _MaxPoolWithArgmaxGrad(op, grad, unused_argmax_grad):
   return gen_nn_ops._max_pool_grad(op.inputs[0],
@@ -63,21 +63,22 @@ LEARNING_RATE_DECAY_FACTOR = 0.1  # Learning rate decay factor.
 
 INITIAL_LEARNING_RATE = 0.0001      # Initial learning rate.
 EVAL_BATCH_SIZE = 1
-BATCH_SIZE = 3
-SEQUENCE_LENGTH = 10
+BATCH_SIZE = 4
+SEQUENCE_LENGTH = 3
 # for CamVid
 IMAGE_HEIGHT = 360
 IMAGE_WIDTH = 480
 # IMAGE_DEPTH = 3
 # for miccai
-IMAGE_DEPTH = 4
+IMAGE_DEPTH = 3
 
-NUM_CLASSES = 5
+NUM_CLASSES = 11
 NUM_EXAMPLES_PER_EPOCH_FOR_TRAIN = 367
-NUM_EXAMPLES_PER_EPOCH_FOR_TEST = 101
+#NUM_EXAMPLES_PER_EPOCH_FOR_TEST = 101
+NUM_EXAMPLES_PER_EPOCH_FOR_TEST = 233
 NUM_EXAMPLES_PER_EPOCH_FOR_EVAL = 1
-# TEST_ITER = NUM_EXAMPLES_PER_EPOCH_FOR_TEST / (BATCH_SIZE * SEQUENCE_LENGTH)
-TEST_ITER = (155//SEQUENCE_LENGTH)*(24 // BATCH_SIZE)
+TEST_ITER = NUM_EXAMPLES_PER_EPOCH_FOR_TEST / (BATCH_SIZE * SEQUENCE_LENGTH)
+# TEST_ITER = (155//SEQUENCE_LENGTH)*(24 // BATCH_SIZE)
 
 def _activation_summary(x):
   """Helper to create summaries for activations.
@@ -165,7 +166,7 @@ def orthogonal_initializer(scale = 1.1):
     ''' From Lasagne and Keras. Reference: Saxe et al., http://arxiv.org/abs/1312.6120
     '''
     print('Warning -- You have opted to use the orthogonal_initializer function')
-    def _initializer(shape, dtype=tf.float32):
+    def _initializer(shape, dtype=tf.float32, partition_info=None):
       flat_shape = (shape[0], np.prod(shape[1:]))
       a = np.random.normal(0.0, 1.0, flat_shape)
       u, _, v = np.linalg.svd(a, full_matrices=False)
@@ -258,8 +259,8 @@ def conv_layer_with_bn(inputT, shape, train_phase, activation=True, name=None, r
     with tf.variable_scope(name, reuse=reuse) as scope:
       kernel = _variable_with_weight_decay('weights',
                                            shape=shape,
-                                           initializer=msra_initializer(k_size, in_channel),
-                                           wd=None)
+                                           initializer=msra_initializer(k_size, out_channel),
+                                           wd=0.0005)
       conv = tf.nn.conv2d(inputT, kernel, [1, 1, 1, 1], padding='SAME')
       biases = _variable_on_cpu('biases', [out_channel], tf.constant_initializer(0.0))
       bias = tf.nn.bias_add(conv, biases)
@@ -310,8 +311,7 @@ def batch_norm_layer(inputT, is_training, scope):
 def encoder(images, phase_train, reuse=False):
   batch_size = BATCH_SIZE
   # norm1
-  norm1 = tf.nn.lrn(images, depth_radius=5, bias=1.0, alpha=0.0001, beta=0.75,
-              name='norm1')
+  norm1 = tf.nn.local_response_normalization(images, depth_radius=5, bias=1.0, alpha=0.0001, beta=0.75, name='norm1')
   # conv1
   conv1 = conv_layer_with_bn(norm1, [7, 7, IMAGE_DEPTH, 64], phase_train, name="conv1", reuse=reuse)
   # pool1
@@ -338,22 +338,22 @@ def encoder(images, phase_train, reuse=False):
   return pool4
 
 def decoder(inputT, phase_train, batch_size, reuse=False):
-  upsample4 = deconv_layer(inputT, [2, 2, 64, 64], [batch_size, 30, 30, 64], 2, "up4", reuse=reuse)
+  upsample4 = deconv_layer(inputT, [2, 2, 64, 64], [batch_size, 45, 60, 64], 2, "up4", reuse=reuse)
   # decode 4
   conv_decode4 = conv_layer_with_bn(upsample4, [7, 7, 64, 64], phase_train, False, name="conv_decode4", reuse=reuse)
 
   # upsample 3
-  upsample3= deconv_layer(conv_decode4, [2, 2, 64, 64], [batch_size, 60, 60, 64], 2, "up3", reuse=reuse)
+  upsample3= deconv_layer(conv_decode4, [2, 2, 64, 64], [batch_size, 90, 120, 64], 2, "up3", reuse=reuse)
   # decode 3
   conv_decode3 = conv_layer_with_bn(upsample3, [7, 7, 64, 64], phase_train, False, name="conv_decode3", reuse=reuse)
 
   # upsample2
-  upsample2= deconv_layer(conv_decode3, [2, 2, 64, 64], [batch_size, 120, 120, 64], 2, "up2", reuse=reuse)
+  upsample2= deconv_layer(conv_decode3, [2, 2, 64, 64], [batch_size, 180, 240, 64], 2, "up2", reuse=reuse)
   # decode 2
   conv_decode2 = conv_layer_with_bn(upsample2, [7, 7, 64, 64], phase_train, False, name="conv_decode2", reuse=reuse)
 
   # upsample1
-  upsample1= deconv_layer(conv_decode2, [2, 2, 64, 64], [batch_size, 240, 240, 64], 2, "up1", reuse=reuse)
+  upsample1= deconv_layer(conv_decode2, [2, 2, 64, 64], [batch_size, 360, 480, 64], 2, "up1", reuse=reuse)
   # decode4
   conv_decode1 = conv_layer_with_bn(upsample1, [7, 7, 64, 64], phase_train, False, name="conv_decode1", reuse=reuse)
 
@@ -421,7 +421,7 @@ def sequence_loss(logits, targets, weights,
                   average_across_timesteps=True, average_across_batch=True,
                   softmax_loss_function=None, name=None):
     with tf.name_scope('sequence_loss'):
-        cost = tf.reduce_sum(sequence_loss_by_example(
+        cost = tf.reduce_mean(sequence_loss_by_example(
         logits, targets, weights,
         average_across_timesteps=average_across_timesteps,
         softmax_loss_function=softmax_loss_function))
@@ -450,20 +450,14 @@ def inference(images, labels, phase_train):
       encoder_inputs1.append(encoder(images[i], phase_train, reuse=True))
     else:
       encoder_inputs1.append(encoder(images[i], phase_train))
-  # encoder_inputs = encoder_inputs1[0]
-    #sss = encoder_inputs[0].get_shape()
-  # print("encoder", encoder_inputs)
-  # [[batch, input_size]...T]
-  # cell = convGRU.ConvGRUCell(encoder_inputs1[0].get_shape(), 64, 64, 3)
-  cell = convLSTM.ConvLSTMCell(64, initializer=orthogonal_initializer())
+
+  cell = convLSTM.ConvLSTMCell(64, k_size=3, height=23, width=30, initializer=orthogonal_initializer())
+  cell = tf.nn.rnn_cell.DropoutWrapper(cell, input_keep_prob=0.5, output_keep_prob=0.5)
   stacked_lstm = convLSTM.MultiRNNCell([cell] * 2)
   # output, state = seq2seq(encoder_inputs, encoder_inputs, cell, phase_train, batch_size)
   with tf.variable_scope("basic_convGRU_seq2seq"):
     output, enc_state = rnn.rnn(stacked_lstm, encoder_inputs1, dtype=tf.float32)
-  # output = [[batch, input_size]...T]
-  # temp
-  # output = encoder_inputs
-  # output = encoded
+
   decoder_outputs1 = []
   for i in range(sequence_length):
     if i > 0:
@@ -514,20 +508,66 @@ def train(total_loss, global_step):
 
     return train_op
 
+def seq_test():
+  # testing should set BATCH_SIZE = 1
+  batch_size = 1
+  seq_length = 3
+  image_filenames, label_filenames = get_filename_list("/tmp3/first350/SegNet-Tutorial/CamVid/test.txt")
+
+  test_data_node = tf.placeholder(
+        tf.float32,
+        shape=[batch_size, seq_length, 360, 480, 3])
+
+  test_labels_node = tf.placeholder(tf.int64, shape=[batch_size, seq_length, 360, 480, 1])
+
+  phase_train = tf.placeholder(tf.bool, name='phase_train')
+
+  loss, logits = inference(test_data_node, test_labels_node, phase_train)
+
+  # pred = tf.argmax(logits, dimension=3)
+
+  # get moving avg
+  variable_averages = tf.train.ExponentialMovingAverage(
+                      MOVING_AVERAGE_DECAY)
+  variables_to_restore = variable_averages.variables_to_restore()
+
+  saver = tf.train.Saver(variables_to_restore)
+
+  with tf.Session() as sess:
+    # Load checkpoint
+    saver.restore(sess, "/tmp3/first350/TensorFlow/Logs_seq/seq_model.ckpt-2000" )
+    images, labels = get_all_test_data_seq(image_filenames, label_filenames, seq_length)
+    # threads = tf.train.start_queue_runners(sess=sess)
+    hist = np.zeros((NUM_CLASSES, NUM_CLASSES))
+    for image_batch, label_batch  in zip(images, labels):
+      print(image_batch.shape, label_batch.shape)
+      feed_dict = {
+        test_data_node: image_batch,
+        test_labels_node: label_batch,
+        phase_train: False
+      }
+      dense_prediction = sess.run(logits, feed_dict=feed_dict)
+      print(dense_prediction[0].shape)
+      hist += Utils.get_hist_seq(dense_prediction, label_batch, batch_size, seq_length, NUM_CLASSES)
+    acc_total = np.diag(hist).sum() / hist.sum()
+    iu = np.diag(hist) / (hist.sum(1) + hist.sum(0) - np.diag(hist))
+    print("acc: ", acc_total)
+    print("mean IU: ", np.nanmean(iu))
+
 def seq_main():
   image_filenames, label_filenames = get_filename_list_seq("/tmp3/first350/SegNet-Tutorial/CamVid/train.txt", SEQUENCE_LENGTH)
-  val_image_filenames, val_label_filenames = get_filename_list_seq("/tmp3/first350/SegNet-Tutorial/CamVid/val.txt", SEQUENCE_LENGTH)
+  val_image_filenames, val_label_filenames = get_filename_list_seq("/tmp3/first350/SegNet-Tutorial/CamVid/test.txt", SEQUENCE_LENGTH)
   batch_size = BATCH_SIZE
   seq_length = SEQUENCE_LENGTH
-  max_steps = 50000
+  max_steps = 4000
   train_dir = "/tmp3/first350/TensorFlow/Logs_seq"
-  ff = get_miccai_filename(seq_length)
+  # ff = get_miccai_filename(seq_length)
   with tf.Graph().as_default():
     train_data_node = tf.placeholder(
           tf.float32,
-          shape=[batch_size, seq_length, 240, 240, 4])
+          shape=[batch_size, seq_length, 360, 480, 3])
 
-    train_labels_node = tf.placeholder(tf.int64, shape=[batch_size, seq_length, 240, 240, 1])
+    train_labels_node = tf.placeholder(tf.int64, shape=[batch_size, seq_length, 360, 480, 1])
 
     phase_train = tf.placeholder(tf.bool, name='phase_train')
 
@@ -535,16 +575,16 @@ def seq_main():
 
     # im_seq, la_seq = MiccaiInputs_seq(ff, batch_size, seq_length)
 
-    # image_seq, label_seq = CamVidInputs_seq(image_filenames, label_filenames, batch_size, seq_length=seq_length)
+    image_seq, label_seq = CamVidInputs_seq(image_filenames, label_filenames, batch_size, seq_length=seq_length)
 
-    # val_images, val_labels = CamVidInputs_seq(val_image_filenames, val_label_filenames, batch_size, seq_length=seq_length)
+    val_images, val_labels = CamVidInputs_seq(val_image_filenames, val_label_filenames, batch_size, seq_length=seq_length)
 
     loss, eval_prediction = inference(train_data_node, train_labels_node, phase_train)
 
     train_op = train(loss, global_step)
 
     # Create a saver.
-    saver = tf.train.Saver(tf.all_variables())
+    saver = tf.train.Saver(tf.all_variables(), max_to_keep=50)
 
     # Build the summary operation based on the TF collection of Summaries.
     summary_op = tf.merge_all_summaries()
@@ -566,9 +606,8 @@ def seq_main():
       acc_summary = tf.scalar_summary("test_accuracy", acc_pl)
       iu_summary = tf.scalar_summary("Mean_IU", iu_pl)
       for step in range(max_steps):
-        # image_batch ,label_batch = sess.run([image_seq, label_seq])
-        # image_batch, label_batch = sess.run([im_seq, la_seq])
-        image_batch, label_batch = get_miccai_data(ff[0:250], batch_size, seq_length)
+        image_batch ,label_batch = sess.run([image_seq, label_seq])
+        # image_batch, label_batch = get_miccai_data(ff[0:250], batch_size, seq_length)
         # freq = Utils.count_freq(label_batch, batch_size)
         feed_dict = {
            train_data_node :image_batch,
@@ -599,12 +638,14 @@ def seq_main():
           brain_index = 0
           depth_index = 0
           for test_step in range(TEST_ITER):
-            #val_images_batch, val_labels_batch = sess.run([val_images, val_labels])
+            val_images_batch, val_labels_batch = sess.run([val_images, val_labels])
+            """
             val_images_batch, val_labels_batch = get_miccai_test_data(ff[250: 274], batch_size, seq_length, brain_index, depth_index)
             depth_index += seq_length
             if (depth_index + seq_length > 155):
               brain_index += batch_size
               depth_index = 0
+            """
 
             _val_loss, _val_pred = sess.run([loss, eval_prediction], feed_dict={
               train_data_node: val_images_batch,
@@ -635,3 +676,4 @@ def seq_main():
 
 if __name__ == "__main__":
   seq_main()
+  # seq_test()

@@ -16,6 +16,30 @@ from tensorflow.python.util import nest
 # Future : Replace it with tensorflow.python.util.nest
 import collections
 import six
+
+def ln(input, s, b, epsilon = 1e-5, max = 1000):
+    """ Layer normalizes a 2D tensor along its second axis, which corresponds to batch """
+    m, v = tf.nn.moments(input, [1], keep_dims=True)
+    normalised_input = (input - m) / tf.sqrt(v + epsilon)
+    return normalised_input * s + b
+
+def ln_conv(tensor, scope = None, epsilon = 1e-5):
+    """ Layer normalizes a 2D tensor along its second axis """
+    assert(len(tensor.get_shape()) == 4) # [b, w, h, c]
+    m, v = tf.nn.moments(tensor, [1,2,3], keep_dims=True)
+    if not isinstance(scope, str):
+        scope = ''
+    with tf.variable_scope(scope + 'layer_norm'):
+        scale = tf.get_variable('scale',
+                                shape=[tensor.get_shape()[1]],
+                                initializer=tf.constant_initializer(1))
+        shift = tf.get_variable('shift',
+                                shape=[tensor.get_shape()[1]],
+                                initializer=tf.constant_initializer(0))
+    LN_initial = (tensor - m) / tf.sqrt(v + epsilon)
+
+    return LN_initial * scale + shift
+
 def _is_sequence(seq):
   return (isinstance(seq, collections.Sequence)
           and not isinstance(seq, six.string_types))
@@ -29,7 +53,7 @@ class ConvLSTMCell(rnn_cell.RNNCell):
    Future : Peephole connection will be added as the full LSTMCell
             implementation of TensorFlow.
   """
-  def __init__(self, num_units, input_size=None,
+  def __init__(self, num_units, k_size=3, height=23, width=30, input_size=None,
                use_peepholes=False, cell_clip=None,
                initializer=None, num_proj=None, proj_clip=None,
                num_unit_shards=1, num_proj_shards=1,
@@ -54,6 +78,10 @@ class ConvLSTMCell(rnn_cell.RNNCell):
     self._forget_bias = forget_bias
     self._state_is_tuple = state_is_tuple
     self._activation = activation
+    self._initializer = initializer
+    self._k_size = k_size
+    self._height = height
+    self._width = width
 
   @property
   def state_size(self):
@@ -64,10 +92,10 @@ class ConvLSTMCell(rnn_cell.RNNCell):
   def output_size(self):
     return self._num_units
 
-  def zero_state(self, batch_size=3, dtype=None, height=15, width=15):
-    return tf.zeros([batch_size, height, width, self._num_units*2])
+  def zero_state(self, batch_size=3, dtype=None):
+    return tf.zeros([batch_size, self._height, self._width, self._num_units*2])
 
-  def __call__(self, inputs, state, k_size=7, scope=None):
+  def __call__(self, inputs, state, scope=None):
     """Convolutional Long short-term memory cell (ConvLSTM)."""
     with vs.variable_scope(scope or type(self).__name__): # "ConvLSTMCell"
       if self._state_is_tuple:
@@ -76,7 +104,7 @@ class ConvLSTMCell(rnn_cell.RNNCell):
         c, h = array_ops.split(3, 2, state)
 
       # batch_size * height * width * channel
-      concat = _conv([inputs, h], 4 * self._num_units, k_size, True, initializer=initializer)
+      concat = _conv([inputs, h], 4 * self._num_units, self._k_size, True, initializer=self._initializer)
 
       # i = input_gate, j = new_input, f = forget_gate, o = output_gate
       i, j, f, o = array_ops.split(3, 4, concat)
@@ -119,7 +147,7 @@ class MultiRNNCell(rnn_cell.RNNCell):
   def output_size(self):
     return self._cells[-1].output_size
 
-  def zero_state(self, batch_size=3, dtype=None, height=15, width=15):
+  def zero_state(self, batch_size=3, dtype=None, height=23, width=30):
     return tf.zeros([len(self._cells), batch_size, height, width, self._num_units*2])
 
   def __call__(self, inputs, state, scope=None):

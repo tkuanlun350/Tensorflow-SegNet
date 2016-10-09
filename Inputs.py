@@ -208,12 +208,36 @@ def get_all_test_data(im_list, la_list):
   labels = []
   index = 0
   for im_filename, la_filename in zip(im_list, la_list):
-    if index == TEST_SIZE:
-        break
-    images.append(skimage.io.imread(im_filename))
-    labels.append(skimage.io.imread(la_filename))
+    im = np.array(skimage.io.imread(im_filename), np.float32)
+    im = im[np.newaxis]
+    la = skimage.io.imread(la_filename)
+    la = la[np.newaxis]
+    la = la[...,np.newaxis]
+    images.append(im)
+    labels.append(la)
+  return images, labels
+
+def get_all_test_data_seq(im_list, la_list, seq_length):
+  images = []
+  labels = []
+  im1 = []
+  la1 = []
+  index = 0
+  for im_filename, la_filename in zip(im_list, la_list):
+    if index % 3 == 0 and index != 0:
+        im1.append(np.array(images)[np.newaxis])
+        la1.append(np.array(labels)[np.newaxis])
+        images = []
+        labels = []
+    im = np.array(skimage.io.imread(im_filename), np.float32)
+    #im = im[np.newaxis]
+    la = skimage.io.imread(la_filename)
+    #la = la[np.newaxis]
+    la = la[...,np.newaxis]
+    images.append(im)
+    labels.append(la)
     index += 1
-  return np.array(images, dtype=np.float32), np.array(labels)
+  return im1, la1
 
 def get_miccai_filename(seq_length):
   path="/tmp2/r04921120/MIRA/BRATS2015_Training-2/HGG/"
