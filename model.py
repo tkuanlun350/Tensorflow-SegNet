@@ -517,7 +517,7 @@ def test():
 
   with tf.Session() as sess:
     # Load checkpoint
-    saver.restore(sess, "/tmp4/first350/TensorFlow/Logs/model.ckpt-7000" )
+    saver.restore(sess, "/tmp4/first350/TensorFlow/Logs/model.ckpt-" )
     images, labels = get_all_test_data(image_filenames, label_filenames)
     threads = tf.train.start_queue_runners(sess=sess)
     hist = np.zeros((NUM_CLASSES, NUM_CLASSES))
@@ -539,6 +539,8 @@ def test():
 
 
 if __name__ == "__main__":
+  test()
+  exit()
   max_steps = 20000
   batch_size = BATCH_SIZE
   train_dir = "/tmp4/first350/TensorFlow/Logs"
@@ -571,7 +573,7 @@ if __name__ == "__main__":
         train_op = train(loss, global_step)
 
         # Create a saver.
-        saver = tf.train.Saver(tf.all_variables(), max_to_keep=50)
+        saver = tf.train.Saver(tf.all_variables())
 
         # Build the summary operation based on the TF collection of Summaries.
         summary_op = tf.merge_all_summaries()
@@ -654,7 +656,7 @@ if __name__ == "__main__":
               summary_writer.add_summary(iu_summary_str, step)
             # Save the model checkpoint periodically.
             if step % 1000 == 0 or (step + 1) == max_steps:
-              checkpoint_path = os.path.join(train_dir, 'model_trick.ckpt')
+              checkpoint_path = os.path.join(train_dir, 'model.ckpt')
               saver.save(sess, checkpoint_path, global_step=step)
 
           coord.request_stop()

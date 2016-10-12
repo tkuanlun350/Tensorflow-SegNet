@@ -63,7 +63,7 @@ LEARNING_RATE_DECAY_FACTOR = 0.1  # Learning rate decay factor.
 
 INITIAL_LEARNING_RATE = 0.0001      # Initial learning rate.
 EVAL_BATCH_SIZE = 1
-BATCH_SIZE = 4
+BATCH_SIZE = 1
 SEQUENCE_LENGTH = 3
 # for CamVid
 IMAGE_HEIGHT = 360
@@ -259,7 +259,7 @@ def conv_layer_with_bn(inputT, shape, train_phase, activation=True, name=None, r
     with tf.variable_scope(name, reuse=reuse) as scope:
       kernel = _variable_with_weight_decay('weights',
                                            shape=shape,
-                                           initializer=msra_initializer(k_size, out_channel),
+                                           initializer=orthogonal_initializer(),
                                            wd=0.0005)
       conv = tf.nn.conv2d(inputT, kernel, [1, 1, 1, 1], padding='SAME')
       biases = _variable_on_cpu('biases', [out_channel], tf.constant_initializer(0.0))
@@ -361,7 +361,7 @@ def decoder(inputT, phase_train, batch_size, reuse=False):
   with tf.variable_scope('conv_classifier', reuse=reuse) as scope:
     kernel = _variable_with_weight_decay('weights',
                                          shape=[1, 1, 64, NUM_CLASSES],
-                                         initializer=msra_initializer(1, 64),
+                                         initializer=orthogonal_initializer(),
                                          wd=0.0005)
     conv = tf.nn.conv2d(conv_decode1, kernel, [1, 1, 1, 1], padding='SAME')
     biases = _variable_on_cpu('biases', [NUM_CLASSES], tf.constant_initializer(0.0))
@@ -369,7 +369,7 @@ def decoder(inputT, phase_train, batch_size, reuse=False):
 
   return conv_classifier
 
-def convGRU_decoder(decoder_inputs, initial_state, cell, loop_function=None, scope=None):
+def convLSTM_decoder(decoder_inputs, initial_state, cell, loop_function=None, scope=None):
   with variable_scope.variable_scope(scope or "convGRU_decoder"):
     state = initial_state
     outputs = []
@@ -387,9 +387,9 @@ def convGRU_decoder(decoder_inputs, initial_state, cell, loop_function=None, sco
   return outputs, state
 
 def seq2seq(encoder_inputs, decoder_inputs, cell, phase_train, batch_size, dtype=dtypes.float32, scope=None):
-  with variable_scope.variable_scope(scope or "basic_convGRU_seq2seq"):
+  with variable_scope.variable_scope(scope or "basic_convLSTM_seq2seq"):
     _, enc_state = rnn.rnn(cell, encoder_inputs, dtype=dtype)
-    return convGRU_decoder(decoder_inputs, enc_state, cell)
+    return convLSTM_decoder(decoder_inputs, enc_state, cell)
 
 def sequence_loss_by_example(logits, targets, weights,
                              average_across_timesteps=True,
@@ -452,11 +452,14 @@ def inference(images, labels, phase_train):
       encoder_inputs1.append(encoder(images[i], phase_train))
 
   cell = convLSTM.ConvLSTMCell(64, k_size=3, height=23, width=30, initializer=orthogonal_initializer())
-  cell = tf.nn.rnn_cell.DropoutWrapper(cell, input_keep_prob=0.5, output_keep_prob=0.5)
-  stacked_lstm = convLSTM.MultiRNNCell([cell] * 2)
+  # cell = convLSTM.LNConvLSTMCell(64, k_size=3, height=23, width=30, initializer=orthogonal_initializer())
+  # cell = convLSTM.ConvGRUCell(64, k_size=3, height=23, width=30, initializer=orthogonal_initializer())
+  # cell = tf.nn.rnn_cell.DropoutWrapper(cell, input_keep_prob=0.5, output_keep_prob=0.5)
+  # stacked_lstm = convLSTM.MultiRNNCell([cell] * 2)
   # output, state = seq2seq(encoder_inputs, encoder_inputs, cell, phase_train, batch_size)
   with tf.variable_scope("basic_convGRU_seq2seq"):
-    output, enc_state = rnn.rnn(stacked_lstm, encoder_inputs1, dtype=tf.float32)
+    output, enc_state = rnn.rnn(cell, encoder_inputs1, dtype=tf.float32)
+    # output, _ = seq2seq(encoder_inputs1, encoder_inputs1, cell, phase_train, batch_size)
 
   decoder_outputs1 = []
   for i in range(sequence_length):
@@ -510,7 +513,7 @@ def train(total_loss, global_step):
 
 def seq_test():
   # testing should set BATCH_SIZE = 1
-  batch_size = 1
+  batch_size = BATCH_SIZE
   seq_length = 3
   image_filenames, label_filenames = get_filename_list("/tmp3/first350/SegNet-Tutorial/CamVid/test.txt")
 
@@ -535,7 +538,7 @@ def seq_test():
 
   with tf.Session() as sess:
     # Load checkpoint
-    saver.restore(sess, "/tmp3/first350/TensorFlow/Logs_seq/seq_model.ckpt-2000" )
+    saver.restore(sess, "/tmp3/first350/TensorFlow/Logs_seq/seq_model.ckpt-6000" )
     images, labels = get_all_test_data_seq(image_filenames, label_filenames, seq_length)
     # threads = tf.train.start_queue_runners(sess=sess)
     hist = np.zeros((NUM_CLASSES, NUM_CLASSES))
@@ -559,7 +562,7 @@ def seq_main():
   val_image_filenames, val_label_filenames = get_filename_list_seq("/tmp3/first350/SegNet-Tutorial/CamVid/test.txt", SEQUENCE_LENGTH)
   batch_size = BATCH_SIZE
   seq_length = SEQUENCE_LENGTH
-  max_steps = 4000
+  max_steps = 10000
   train_dir = "/tmp3/first350/TensorFlow/Logs_seq"
   # ff = get_miccai_filename(seq_length)
   with tf.Graph().as_default():
@@ -675,5 +678,5 @@ def seq_main():
 
 
 if __name__ == "__main__":
-  seq_main()
-  # seq_test()
+  # seq_main()
+  seq_test()
