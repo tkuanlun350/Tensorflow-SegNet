@@ -7,3 +7,5 @@ for model detail, please go to https://github.com/alexgkendall/caffe-segnet
 Due to indice unravel still unavailable in tensorflow, the original upsampling
 method is temporarily replaced by deconv( or conv-transpose) layer.
 this model is still under construction, mainly use for personal research
+
+note: seq_slice.py is small script for data preprocessing and can be totally ignored
