@@ -136,6 +136,22 @@ def msra_initializer(kl, dl):
     stddev = math.sqrt(2. / (kl**2 * dl))
     return tf.truncated_normal_initializer(stddev=stddev)
 
+def identity_initializer():
+  def _initializer(shape, dtype=tf.float32, partition_info=None):
+      if len(shape) == 1:
+          return tf.constant_op.constant(0., dtype=dtype, shape=shape)
+      elif len(shape) == 2 and shape[0] == shape[1]:
+          return tf.constant_op.constant(np.identity(shape[0], dtype))
+      elif len(shape) == 4 and shape[2] == shape[3]:
+          array = np.zeros(shape, dtype=float)
+          cx, cy = shape[0]/2, shape[1]/2
+          for i in range(shape[2]):
+              array[cx, cy, i, i] = 1
+          return tf.constant(array, dtype=dtype)
+      else:
+          raise
+  return _initializer
+  
 def orthogonal_initializer(scale = 1.1):
     ''' From Lasagne and Keras. Reference: Saxe et al., http://arxiv.org/abs/1312.6120
     '''
