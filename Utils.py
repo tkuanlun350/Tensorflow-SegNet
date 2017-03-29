@@ -1,6 +1,88 @@
 import tensorflow as tf
-import Image
 import numpy as np
+from PIL import Image
+
+def _activation_summary(x):
+  """Helper to create summaries for activations.
+
+  Creates a summary that provides a histogram of activations.
+  Creates a summary that measure the sparsity of activations.
+
+  Args:
+    x: Tensor
+  Returns:
+    nothing
+  """
+  # session. This helps the clarity of presentation on tensorboard.
+  tensor_name = re.sub('%s_[0-9]*/' % TOWER_NAME, '', x.op.name)
+  tf.histogram_summary(tensor_name + '/activations', x)
+  tf.scalar_summary(tensor_name + '/sparsity', tf.nn.zero_fraction(x))
+
+def _add_loss_summaries(total_loss):
+  """Add summaries for losses in CIFAR-10 model.
+
+  Generates moving average for all losses and associated summaries for
+  visualizing the performance of the network.
+
+  Args:
+    total_loss: Total loss from loss().
+  Returns:
+    loss_averages_op: op for generating moving averages of losses.
+  """
+  # Compute the moving average of all individual losses and the total loss.
+  loss_averages = tf.train.ExponentialMovingAverage(0.9, name='avg')
+  losses = tf.get_collection('losses')
+  loss_averages_op = loss_averages.apply(losses + [total_loss])
+
+  # Attach a scalar summary to all individual losses and the total loss; do the
+  # same for the averaged version of the losses.
+  for l in losses + [total_loss]:
+    # Name each loss as '(raw)' and name the moving average version of the loss
+    # as the original loss name.
+    tf.scalar_summary(l.op.name +' (raw)', l)
+    tf.scalar_summary(l.op.name, loss_averages.average(l))
+
+  return loss_averages_op
+
+def _variable_on_cpu(name, shape, initializer):
+  """Helper to create a Variable stored on CPU memory.
+
+  Args:
+    name: name of the variable
+    shape: list of ints
+    initializer: initializer for Variable
+
+  Returns:
+    Variable Tensor
+  """
+  with tf.device('/cpu:0'):
+    var = tf.get_variable(name, shape, initializer=initializer)
+  return var
+
+def _variable_with_weight_decay(name, shape, initializer, wd):
+  """Helper to create an initialized Variable with weight decay.
+
+  Note that the Variable is initialized with a truncated normal distribution.
+  A weight decay is added only if one is specified.
+
+  Args:
+    name: name of the variable
+    shape: list of ints
+    stddev: standard deviation of a truncated Gaussian
+    wd: add L2Loss weight decay multiplied by this float. If None, weight
+        decay is not added for this Variable.
+
+  Returns:
+    Variable Tensor
+  """
+  var = _variable_on_cpu(
+      name,
+      shape,
+      initializer)
+  if wd is not None:
+    weight_decay = tf.mul(tf.nn.l2_loss(var), wd, name='weight_loss')
+    tf.add_to_collection('losses', weight_decay)
+  return var
 
 def writeImage(image, filename):
     """ store label data to colored image """
@@ -39,25 +121,20 @@ def fast_hist(a, b, n):
     k = (a >= 0) & (a < n)
     return np.bincount(n * a[k].astype(int) + b[k], minlength=n**2).reshape(n, n)
 
-def get_hist_seq(predictions, labels, batch_size, seq_length, num_class):
-  predictions = np.transpose(predictions, [1,0,2,3,4])
+def get_hist(predictions, labels):
+  num_class = predictions.shape[3]
+  batch_size = predictions.shape[0]
   hist = np.zeros((num_class, num_class))
   for i in range(batch_size):
-    hist += fast_hist(labels[i].flatten(), predictions[i].argmax(3).flatten(), num_class)
+    hist += fast_hist(labels[i].flatten(), predictions[i].argmax(2).flatten(), num_class)
   return hist
 
-def get_hist(predictions, labels):
-  hist = np.zeros((NUM_CLASSES, NUM_CLASSES))
-  for i in range(BATCH_SIZE):
-    hist += fast_hist(labels[i].flatten(), predictions[i].argmax(2).flatten(), NUM_CLASSES)
-  return hist
-
-def print_hist_summery(hist, num_class):
+def print_hist_summery(hist):
   acc_total = np.diag(hist).sum() / hist.sum()
   print ('accuracy = %f'%np.nanmean(acc_total))
   iu = np.diag(hist) / (hist.sum(1) + hist.sum(0) - np.diag(hist))
   print ('mean IU  = %f'%np.nanmean(iu))
-  for ii in range(num_class):
+  for ii in range(hist.shape[0]):
       if float(hist.sum(1)[ii]) == 0:
         acc = 0.0
       else:
@@ -66,8 +143,8 @@ def print_hist_summery(hist, num_class):
 
 def per_class_acc(predictions, label_tensor):
     labels = label_tensor
-    num_class = NUM_CLASSES
     size = predictions.shape[0]
+    num_class = predictions.shape[3]
     hist = np.zeros((num_class, num_class))
     for i in range(size):
       hist += fast_hist(labels[i].flatten(), predictions[i].argmax(2).flatten(), num_class)
@@ -81,42 +158,3 @@ def per_class_acc(predictions, label_tensor):
         else:
           acc = np.diag(hist)[ii] / float(hist.sum(1)[ii])
         print("    class # %d accuracy = %f "%(ii,acc))
-
-def eval_seq(pred, labels, batch_size, sequence_length, num_class):
-  #pred: [t, b, w, h, num_class] => [b,t,w,h,num_class]
-  pred = np.transpose(pred, [1,0,2,3,4])
-  hist = np.zeros((num_class, num_class))
-  for i in range(batch_size):
-    hist += fast_hist(labels[i].flatten(), pred[i].argmax(3).flatten(), num_class)
-  acc_total = np.diag(hist).sum() / hist.sum()
-  acc_no_zero = (np.diag(hist).sum() - hist[0][0]) / (hist.sum() - hist[0][0])
-  print ('accuracy = %f'%np.nanmean(acc_total))
-  print ('accuracy without0  = %f'%np.nanmean(acc_no_zero))
-  iu = np.diag(hist) / (hist.sum(1) + hist.sum(0) - np.diag(hist))
-  print ('mean IU  = %f'%np.nanmean(iu))
-  for ii in range(num_class):
-      if float(hist.sum(1)[ii]) == 0:
-        acc = 0.0
-      else:
-        acc = np.diag(hist)[ii] / float(hist.sum(1)[ii])
-      print("    class # %d accuracy = %f "%(ii,acc))
-
-def eval_batches(data, sess, eval_prediction=None):
-    """Get all predictions for a dataset by running it in small batches."""
-    size = data.shape[0] # batch_size
-    predictions = np.ndarray(shape=(size, IMAGE_HEIGHT, IMAGE_WIDTH, NUM_CLASSES), dtype=np.float32)
-    for begin in xrange(0, size, EVAL_BATCH_SIZE):
-      end = begin + EVAL_BATCH_SIZE
-      if end <= size:
-        predictions[begin:end, :] = eval_prediction
-      else:
-        batch_predictions = eval_prediction
-        predictions[begin:, :] = batch_predictions[begin - size:, :]
-    return predictions
-
-def count_freq(label_batch, batch_size):
-  hist = np.zeros(6)
-  for i in range(batch_size):
-    new_hist = np.bincount(label_batch[i].flatten(), minlength=6)
-    hist += new_hist
-  print(hist)
