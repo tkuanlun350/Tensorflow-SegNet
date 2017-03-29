@@ -17,13 +17,17 @@ More utility function will be added and some messed coding style will be fixed.
 Any feature request is also welcomed.
 
 # Usage
+see also example.sh
 training:
+
   python main.py --log_dir=path_to_your_log --image_dir=path_to_CamVid_train.txt --val_dir=path_to_CamVid_val.txt --batch_size=5
 
 finetune:
+
   python main.py --finetune=path_to_saved_ckpt --log_dir=path_to_your_log --image_dir=path_to_CamVid_train.txt --val_dir=path_to_CamVid_val.txt --batch_size=5
 
 testing:
+
   python main.py --testing=path_to_saved_ckpt --log_dir=path_to_your_log --test_dir=path_to_CamVid_train.txt --batch_size=5 --save_image=True
 
 You can set default path and parameters in main.py line 6~18.
@@ -35,9 +39,13 @@ This Implement default to use CamVid dataset as described in the original SegNet
 The dataset can be download from author's github https://github.com/alexgkendall/SegNet-Tutorial in the CamVid folder
 
 example format:
+
 "path_to_image1" "path_to_corresponded_label_image1",
+
 "path_to_image2" "path_to_corresponded_label_image2",
+
 "path_to_image3" "path_to_corresponded_label_image3",
+
 .......
 
 # Remark
