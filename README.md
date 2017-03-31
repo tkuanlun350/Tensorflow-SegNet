@@ -5,6 +5,9 @@ successfully trained segnet-basic in CamVid dataset
 for model detail, please go to https://github.com/alexgkendall/caffe-segnet
 
 # Update
+Important! This version is constructed under tensorflow 0.11rc
+will be updated to 0.1 as soon as possible.
+
 Finally get some time to refactor a bit, removing some un-used function and
 remove the hard-coded file path Now the model should be easy to config.
 The parameters can be found in main.py.
