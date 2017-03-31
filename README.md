@@ -1,6 +1,12 @@
 # Tensorflow-SegNet
-Implement slightly different [SegNet](http://arxiv.org/abs/1511.00561) in tensorflow,
-successfully trained segnet-basic in CamVid dataset
+Implement slightly different (see below for detail) [SegNet](http://arxiv.org/abs/1511.00561) in tensorflow,
+successfully trained segnet-basic in CamVid dataset.
+
+Due to indice unravel still unavailable in tensorflow, the original upsampling
+method is temporarily replaced simply by deconv( or conv-transpose) layer (without pooling indices).
+You can follow the issue here: https://github.com/tensorflow/tensorflow/issues/2169
+(The current workaround for unpooling layer is a bit slow because it lacks of GPU support.)
+
 
 for model detail, please go to https://github.com/alexgkendall/caffe-segnet
 
@@ -50,9 +56,3 @@ example format:
 "path_to_image3" "path_to_corresponded_label_image3",
 
 .......
-
-# Remark
-Due to indice unravel still unavailable in tensorflow, the original upsampling
-method is temporarily replaced simply by deconv( or conv-transpose) layer (without pooling indices).
-You can follow the issue here: https://github.com/tensorflow/tensorflow/issues/2169
-(The current workaround for unpooling layer is a bit slow because it lacks of GPU support.)
