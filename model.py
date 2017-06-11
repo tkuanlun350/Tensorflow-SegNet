@@ -7,11 +7,9 @@ import numpy as np
 import math
 from datetime import datetime
 import time
-import Image
+from PIL import Image
 from math import ceil
 from tensorflow.python.ops import gen_nn_ops
-import skimage
-import skimage.io
 # modules
 from Utils import _variable_with_weight_decay, _variable_on_cpu, _add_loss_summaries, _activation_summary, print_hist_summery, get_hist, per_class_acc, writeImage
 from Inputs import *
@@ -76,7 +74,7 @@ def loss(logits, labels):
   labels = tf.reshape(labels, [-1])
 
   cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(
-      logits, labels, name='cross_entropy_per_example')
+      logits=logits, labels=labels, name='cross_entropy_per_example')
   cross_entropy_mean = tf.reduce_mean(cross_entropy, name='cross_entropy')
   tf.add_to_collection('losses', cross_entropy_mean)
 
@@ -100,7 +98,7 @@ def weighted_loss(logits, labels, num_classes, head=None):
 
         softmax = tf.nn.softmax(logits)
 
-        cross_entropy = -tf.reduce_sum(tf.mul(labels * tf.log(softmax + epsilon), head), reduction_indices=[1])
+        cross_entropy = -tf.reduce_sum(tf.multiply(labels * tf.log(softmax + epsilon), head), axis=[1])
 
         cross_entropy_mean = tf.reduce_mean(cross_entropy, name='cross_entropy')
 
@@ -268,12 +266,12 @@ def train(total_loss, global_step):
 
     # Add histograms for trainable variables.
     for var in tf.trainable_variables():
-      tf.histogram_summary(var.op.name, var)
+      tf.summary.histogram(var.op.name, var)
 
     # Add histograms for gradients.
     for grad, var in grads:
       if grad is not None:
-        tf.histogram_summary(var.op.name + '/gradients', grad)
+        tf.summary.histogram(var.op.name + '/gradients', grad)
 
     # Track the moving averages of all trainable variables.
     variable_averages = tf.train.ExponentialMovingAverage(
@@ -309,7 +307,7 @@ def test(FLAGS):
 
   loss, logits = inference(test_data_node, test_labels_node, batch_size, phase_train)
 
-  pred = tf.argmax(logits, dimension=3)
+  pred = tf.argmax(logits, axis=3)
   # get moving avg
   variable_averages = tf.train.ExponentialMovingAverage(
                       MOVING_AVERAGE_DECAY)
@@ -381,16 +379,16 @@ def training(FLAGS, is_finetune=False):
     # Build a Graph that trains the model with one batch of examples and updates the model parameters.
     train_op = train(loss, global_step)
 
-    saver = tf.train.Saver(tf.all_variables())
+    saver = tf.train.Saver(tf.global_variables())
 
-    summary_op = tf.merge_all_summaries()
+    summary_op = tf.summary.merge_all()
 
     with tf.Session() as sess:
       # Build an initialization operation to run below.
       if (is_finetune == True):
           saver.restore(sess, finetune_ckpt )
       else:
-          init = tf.initialize_all_variables()
+          init = tf.global_variables_initializer()
           sess.run(init)
 
       # Start the queue runners.
@@ -398,13 +396,13 @@ def training(FLAGS, is_finetune=False):
       threads = tf.train.start_queue_runners(sess=sess, coord=coord)
 
       # Summery placeholders
-      summary_writer = tf.train.SummaryWriter(train_dir, sess.graph)
+      summary_writer = tf.summary.FileWriter(train_dir, sess.graph)
       average_pl = tf.placeholder(tf.float32)
       acc_pl = tf.placeholder(tf.float32)
       iu_pl = tf.placeholder(tf.float32)
-      average_summary = tf.scalar_summary("test_average_loss", average_pl)
-      acc_summary = tf.scalar_summary("test_accuracy", acc_pl)
-      iu_summary = tf.scalar_summary("Mean_IU", iu_pl)
+      average_summary = tf.summary.scalar("test_average_loss", average_pl)
+      acc_summary = tf.summary.scalar("test_accuracy", acc_pl)
+      iu_summary = tf.summary.scalar("Mean_IU", iu_pl)
 
       for step in range(startstep, startstep + max_steps):
         image_batch ,label_batch = sess.run([images, labels])
