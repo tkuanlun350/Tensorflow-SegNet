@@ -4,6 +4,8 @@ from tensorflow.python.framework import dtypes
 import os, sys
 import numpy as np
 import math
+import skimage
+import skimage.io
 
 IMAGE_HEIGHT = 360
 IMAGE_WIDTH = 480
@@ -116,4 +118,16 @@ def CamVidInputs(image_filenames, label_filenames, batch_size):
   return _generate_image_and_label_batch(reshaped_image, label,
                                          min_queue_examples, batch_size,
                                          shuffle=True)
-
+def get_all_test_data(im_list, la_list):
+  images = []
+  labels = []
+  index = 0
+  for im_filename, la_filename in zip(im_list, la_list):
+    im = np.array(skimage.io.imread(im_filename), np.float32)
+    im = im[np.newaxis]
+    la = skimage.io.imread(la_filename)
+    la = la[np.newaxis]
+    la = la[...,np.newaxis]
+    images.append(im)
+    labels.append(la)
+  return images, labels

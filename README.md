@@ -13,6 +13,7 @@ for model detail, please go to https://github.com/alexgkendall/caffe-segnet
 # Requirement
 tensorflow 1.0
 Pillow (optional, for write label image)
+scikit-image
 
 # Update
 
