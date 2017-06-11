@@ -10,9 +10,13 @@ You can follow the issue here: https://github.com/tensorflow/tensorflow/issues/2
 
 for model detail, please go to https://github.com/alexgkendall/caffe-segnet
 
+# Requirement
+tensorflow 1.0
+Pillow (optional, for write label image)
+
 # Update
-Important! This version is constructed under tensorflow 0.11rc
-will be updated to 0.1 as soon as possible.
+
+Update to tf 1.0
 
 Finally get some time to refactor a bit, removing some un-used function and
 remove the hard-coded file path Now the model should be easy to config.
