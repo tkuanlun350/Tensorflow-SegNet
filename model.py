@@ -17,17 +17,6 @@ from Utils import _variable_with_weight_decay, _variable_on_cpu, _add_loss_summa
 from Inputs import *
 
 
-""" legacy code for tf bug in missing gradient with max_pool_argmax """
-@ops.RegisterGradient("MaxPoolWithArgmax")
-def _MaxPoolWithArgmaxGrad(op, grad, unused_argmax_grad):
-  return gen_nn_ops._max_pool_grad(op.inputs[0],
-                                   op.outputs[0],
-                                   grad,
-                                   op.get_attr("ksize"),
-                                   op.get_attr("strides"),
-                                   padding=op.get_attr("padding"),
-                                   data_format='NHWC')
-
 # Constants describing the training process.
 MOVING_AVERAGE_DECAY = 0.9999     # The decay to use for the moving average.
 NUM_EPOCHS_PER_DECAY = 350.0      # Epochs after which learning rate decays.
