@@ -295,11 +295,8 @@ def test(FLAGS):
 
   loss, logits = inference(test_data_node, test_labels_node, batch_size, phase_train)
 
-<<<<<<< HEAD
   pred = tf.argmax(logits, dimension=3)
-=======
-  pred = tf.argmax(logits, axis=3)
->>>>>>> 74a711b5c8d22810b87b33cb3fcffc16faf8370c
+
   # get moving avg
   variable_averages = tf.train.ExponentialMovingAverage(
                       MOVING_AVERAGE_DECAY)
@@ -371,26 +368,18 @@ def training(FLAGS, is_finetune=False):
     # Build a Graph that trains the model with one batch of examples and updates the model parameters.
     train_op = train(loss, global_step)
 
-<<<<<<< HEAD
-    saver = tf.train.Saver(tf.all_variables())
 
-    summary_op = tf.merge_all_summaries()
-=======
     saver = tf.train.Saver(tf.global_variables())
 
     summary_op = tf.summary.merge_all()
->>>>>>> 74a711b5c8d22810b87b33cb3fcffc16faf8370c
 
     with tf.Session() as sess:
       # Build an initialization operation to run below.
       if (is_finetune == True):
           saver.restore(sess, finetune_ckpt )
       else:
-<<<<<<< HEAD
-          init = tf.initialize_all_variables()
-=======
+
           init = tf.global_variables_initializer()
->>>>>>> 74a711b5c8d22810b87b33cb3fcffc16faf8370c
           sess.run(init)
 
       # Start the queue runners.
@@ -398,15 +387,7 @@ def training(FLAGS, is_finetune=False):
       threads = tf.train.start_queue_runners(sess=sess, coord=coord)
 
       # Summery placeholders
-<<<<<<< HEAD
-      summary_writer = tf.train.SummaryWriter(train_dir, sess.graph)
-      average_pl = tf.placeholder(tf.float32)
-      acc_pl = tf.placeholder(tf.float32)
-      iu_pl = tf.placeholder(tf.float32)
-      average_summary = tf.scalar_summary("test_average_loss", average_pl)
-      acc_summary = tf.scalar_summary("test_accuracy", acc_pl)
-      iu_summary = tf.scalar_summary("Mean_IU", iu_pl)
-=======
+
       summary_writer = tf.summary.FileWriter(train_dir, sess.graph)
       average_pl = tf.placeholder(tf.float32)
       acc_pl = tf.placeholder(tf.float32)
@@ -414,7 +395,6 @@ def training(FLAGS, is_finetune=False):
       average_summary = tf.summary.scalar("test_average_loss", average_pl)
       acc_summary = tf.summary.scalar("test_accuracy", acc_pl)
       iu_summary = tf.summary.scalar("Mean_IU", iu_pl)
->>>>>>> 74a711b5c8d22810b87b33cb3fcffc16faf8370c
 
       for step in range(startstep, startstep + max_steps):
         image_batch ,label_batch = sess.run([images, labels])
