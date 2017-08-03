@@ -55,8 +55,8 @@ def _generate_image_and_label_batch(image, label, min_queue_examples,
   return images, label_batch
 
 def CamVid_reader_seq(filename_queue, seq_length):
-  image_seq_filenames = tf.split(0, seq_length, filename_queue[0])
-  label_seq_filenames = tf.split(0, seq_length, filename_queue[1])
+  image_seq_filenames = tf.split(axis=0, num_or_size_splits=seq_length, value=filename_queue[0])
+  label_seq_filenames = tf.split(axis=0, num_or_size_splits=seq_length, value=filename_queue[1])
 
   image_seq = []
   label_seq = []
