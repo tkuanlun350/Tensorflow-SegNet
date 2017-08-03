@@ -15,8 +15,9 @@ def _activation_summary(x):
   """
   # session. This helps the clarity of presentation on tensorboard.
   tensor_name = re.sub('%s_[0-9]*/' % TOWER_NAME, '', x.op.name)
-  tf.histogram_summary(tensor_name + '/activations', x)
-  tf.scalar_summary(tensor_name + '/sparsity', tf.nn.zero_fraction(x))
+
+  tf.summary.histogram(tensor_name + '/activations', x)
+  tf.summary.scalar(tensor_name + '/sparsity', tf.nn.zero_fraction(x))
 
 def _add_loss_summaries(total_loss):
   """Add summaries for losses in CIFAR-10 model.
@@ -39,13 +40,9 @@ def _add_loss_summaries(total_loss):
   for l in losses + [total_loss]:
     # Name each loss as '(raw)' and name the moving average version of the loss
     # as the original loss name.
-<<<<<<< HEAD
-    tf.scalar_summary(l.op.name +' (raw)', l)
-    tf.scalar_summary(l.op.name, loss_averages.average(l))
-=======
+
     tf.summary.scalar(l.op.name +' (raw)', l)
     tf.summary.scalar(l.op.name, loss_averages.average(l))
->>>>>>> 74a711b5c8d22810b87b33cb3fcffc16faf8370c
 
   return loss_averages_op
 
@@ -85,11 +82,7 @@ def _variable_with_weight_decay(name, shape, initializer, wd):
       shape,
       initializer)
   if wd is not None:
-<<<<<<< HEAD
-    weight_decay = tf.mul(tf.nn.l2_loss(var), wd, name='weight_loss')
-=======
     weight_decay = tf.multiply(tf.nn.l2_loss(var), wd, name='weight_loss')
->>>>>>> 74a711b5c8d22810b87b33cb3fcffc16faf8370c
     tf.add_to_collection('losses', weight_decay)
   return var
 
