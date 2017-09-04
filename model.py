@@ -14,6 +14,19 @@ from tensorflow.python.ops import gen_nn_ops
 from Utils import _variable_with_weight_decay, _variable_on_cpu, _add_loss_summaries, _activation_summary, print_hist_summery, get_hist, per_class_acc, writeImage
 from Inputs import *
 
+
+
+""" legacy code for tf bug in missing gradient with max_pool_argmax """
+@ops.RegisterGradient("MaxPoolWithArgmax")
+def _MaxPoolWithArgmaxGrad(op, grad, unused_argmax_grad):
+  return gen_nn_ops._max_pool_grad(op.inputs[0],
+                                   op.outputs[0],
+                                   grad,
+                                   op.get_attr("ksize"),
+                                   op.get_attr("strides"),
+                                   padding=op.get_attr("padding"),
+                                   data_format='NHWC')
+
 # Constants describing the training process.
 MOVING_AVERAGE_DECAY = 0.9999     # The decay to use for the moving average.
 NUM_EPOCHS_PER_DECAY = 350.0      # Epochs after which learning rate decays.
@@ -27,7 +40,7 @@ IMAGE_HEIGHT = 360
 IMAGE_WIDTH = 480
 IMAGE_DEPTH = 3
 
-NUM_CLASSES = 11
+NUM_CLASSES = 12
 NUM_EXAMPLES_PER_EPOCH_FOR_TRAIN = 367
 NUM_EXAMPLES_PER_EPOCH_FOR_TEST = 101
 NUM_EXAMPLES_PER_EPOCH_FOR_EVAL = 1
@@ -109,7 +122,7 @@ def cal_loss(logits, labels):
       0.6823,
       6.2478,
       7.3614,
-    ]) # class 0~10
+      1.0974]) # class 0~11
 
     labels = tf.cast(labels, tf.int32)
     # return loss(logits, labels)
@@ -154,6 +167,8 @@ def get_deconv_filter(f_shape):
 
 def deconv_layer(inputT, f_shape, output_shape, stride=2, name=None):
   # output_shape = [b, w, h, c]
+  # sess_temp = tf.InteractiveSession()
+  sess_temp = tf.global_variables_initializer()
   strides = [1, stride, stride, 1]
   with tf.variable_scope(name):
     weights = get_deconv_filter(f_shape)
@@ -196,6 +211,7 @@ def inference(images, labels, batch_size, phase_train):
     # pool4
     pool4, pool4_indices = tf.nn.max_pool_with_argmax(conv4, ksize=[1, 2, 2, 1],
                            strides=[1, 2, 2, 1], padding='SAME', name='pool4')
+
     """ End of encoder """
     """ start upsample """
     # upsample4
@@ -295,14 +311,15 @@ def test(FLAGS):
 
   loss, logits = inference(test_data_node, test_labels_node, batch_size, phase_train)
 
-  pred = tf.argmax(logits, dimension=3)
-
+  pred = tf.argmax(logits, axis=3)
   # get moving avg
   variable_averages = tf.train.ExponentialMovingAverage(
                       MOVING_AVERAGE_DECAY)
   variables_to_restore = variable_averages.variables_to_restore()
 
   saver = tf.train.Saver(variables_to_restore)
+
+  # gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.0001)
 
   with tf.Session() as sess:
     # Load checkpoint
@@ -324,8 +341,10 @@ def test(FLAGS):
       # output_image to verify
       if (FLAGS.save_image):
           writeImage(im[0], 'testing_image.png')
+          # writeImage(im[0], 'out_image/'+str(image_filenames[count]).split('/')[-1])
 
       hist += get_hist(dense_prediction, label_batch)
+      # count+=1
     acc_total = np.diag(hist).sum() / hist.sum()
     iu = np.diag(hist) / (hist.sum(1) + hist.sum(0) - np.diag(hist))
     print("acc: ", acc_total)
@@ -368,17 +387,17 @@ def training(FLAGS, is_finetune=False):
     # Build a Graph that trains the model with one batch of examples and updates the model parameters.
     train_op = train(loss, global_step)
 
-
     saver = tf.train.Saver(tf.global_variables())
 
     summary_op = tf.summary.merge_all()
+
+    # gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.0001)
 
     with tf.Session() as sess:
       # Build an initialization operation to run below.
       if (is_finetune == True):
           saver.restore(sess, finetune_ckpt )
       else:
-
           init = tf.global_variables_initializer()
           sess.run(init)
 
@@ -387,7 +406,6 @@ def training(FLAGS, is_finetune=False):
       threads = tf.train.start_queue_runners(sess=sess, coord=coord)
 
       # Summery placeholders
-
       summary_writer = tf.summary.FileWriter(train_dir, sess.graph)
       average_pl = tf.placeholder(tf.float32)
       acc_pl = tf.placeholder(tf.float32)
@@ -429,7 +447,7 @@ def training(FLAGS, is_finetune=False):
           print("start validating.....")
           total_val_loss = 0.0
           hist = np.zeros((NUM_CLASSES, NUM_CLASSES))
-          for test_step in range(TEST_ITER):
+          for test_step in range(int(TEST_ITER)):
             val_images_batch, val_labels_batch = sess.run([val_images, val_labels])
 
             _val_loss, _val_pred = sess.run([loss, eval_prediction], feed_dict={
