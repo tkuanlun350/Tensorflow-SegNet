@@ -15,7 +15,6 @@ def _activation_summary(x):
   """
   # session. This helps the clarity of presentation on tensorboard.
   tensor_name = re.sub('%s_[0-9]*/' % TOWER_NAME, '', x.op.name)
-
   tf.summary.histogram(tensor_name + '/activations', x)
   tf.summary.scalar(tensor_name + '/sparsity', tf.nn.zero_fraction(x))
 
@@ -40,7 +39,6 @@ def _add_loss_summaries(total_loss):
   for l in losses + [total_loss]:
     # Name each loss as '(raw)' and name the moving average version of the loss
     # as the original loss name.
-
     tf.summary.scalar(l.op.name +' (raw)', l)
     tf.summary.scalar(l.op.name, loss_averages.average(l))
 
@@ -57,7 +55,7 @@ def _variable_on_cpu(name, shape, initializer):
   Returns:
     Variable Tensor
   """
-  with tf.device('/cpu:0'):
+  with tf.device('/gpu:0'):
     var = tf.get_variable(name, shape, initializer=initializer)
   return var
 
@@ -94,11 +92,18 @@ def writeImage(image, filename):
     Road_marking = [255,69,0]
     Road = [128,64,128]
     Pavement = [60,40,222]
+    Tree = [128,128,0]
+    SignSymbol = [192,128,128]
+    Fence = [64,64,128]
+    Car = [64,0,128]
+    Pedestrian = [64,64,0]
+    Bicyclist = [0,128,192]
+    Unlabelled = [0,0,0]
     r = image.copy()
     g = image.copy()
     b = image.copy()
-    label_colours = np.array([Sky, Building, Pole, Road, Road_marking, Pavement])
-    for l in range(0,6):
+    label_colours = np.array([Sky, Building, Pole, Road_marking, Road, Pavement, Tree, SignSymbol, Fence, Car, Pedestrian, Bicyclist, Unlabelled])
+    for l in range(0,12):
         r[image==l] = label_colours[l,0]
         g[image==l] = label_colours[l,1]
         b[image==l] = label_colours[l,2]
